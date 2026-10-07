@@ -128,22 +128,38 @@ pub(super) fn clear_book_caches_impl(
 
     let mut completed = 0;
     let mut restored_source_ids = Vec::new();
-    for book in all_books {
-        // Editable publications are working copies, even before the first edit. Body writes can
-        // survive a failed library save, so equal revisions do not prove they are disposable.
-        let has_working_copy = book.scope == BookScope::Library
-            && (book.source_format == BookSourceFormat::Txt || book.editable || book.revision > book.source_revision);
+    for (book_index, book) in all_books.into_iter().enumerate() {
         let id = book.id;
         let restored_source = tasks.run_book_exclusive(&id, TaskPriority::Critical, || {
+            // The import lock keeps vector positions stable across this batch.
+            let book = storage
+                .inner
+                .state
+                .lock()
+                .map_err(|_| "storage state lock poisoned".to_string())?
+                .library
+                .books
+                .get(book_index)
+                .filter(|book| book.id == id)
+                .cloned()
+                .ok_or_else(|| "Book changed during cache clear".to_string())?;
+            // Editable publications are working copies even when their revisions are equal.
+            let has_working_copy = book.scope == BookScope::Library
+                && (book.source_format == BookSourceFormat::Txt
+                    || book.editable
+                    || book.revision > book.source_revision);
             let preserve_unpacked = preserved_unpacked_book_ids.contains(&id)
                 || storage.derived_cache_is_active(&id)?
                 || (has_working_copy && !source_restorations.contains_key(&id));
+            if !preserve_unpacked && source_restorations.contains_key(&id) {
+                next_book_revision(&book)?;
+            }
+            let _flush_guard = storage
+                .inner
+                .derived_cache_flush_lock
+                .lock()
+                .map_err(|_| "derived cache flush lock poisoned".to_string())?;
             {
-                let _flush_guard = storage
-                    .inner
-                    .derived_cache_flush_lock
-                    .lock()
-                    .map_err(|_| "derived cache flush lock poisoned".to_string())?;
                 storage.remove_derived_memory_cache_data(&id);
                 // Keep active-reader ownership while forgetting only the discarded indexes.
                 {
@@ -175,7 +191,26 @@ pub(super) fn clear_book_caches_impl(
                     }
                 }
             }
-            Ok(!preserve_unpacked && source_restorations.contains_key(&id))
+            let restored = !preserve_unpacked && source_restorations.contains_key(&id);
+            if restored {
+                let (_, size, hash, _) = &source_restorations[&id];
+                let mut state = storage
+                    .inner
+                    .state
+                    .lock()
+                    .map_err(|_| "storage state lock poisoned".to_string())?;
+                let book = state
+                    .library
+                    .books
+                    .get_mut(book_index)
+                    .filter(|book| book.id == id)
+                    .ok_or_else(|| "Book not found after cache clear".to_string())?;
+                adopt_book_source_fields(book, hash.clone(), *size)?;
+                book.updated_at = Some(now_ms());
+                drop(state);
+                storage.mark_library_dirty();
+            }
+            Ok(restored)
         })?;
         if restored_source {
             restored_source_ids.push(id);
@@ -191,26 +226,6 @@ pub(super) fn clear_book_caches_impl(
         return Ok(Vec::new());
     }
 
-    let restored_source_ids = restored_source_ids.into_iter().collect::<HashSet<_>>();
-    {
-        let mut state = storage
-            .inner
-            .state
-            .lock()
-            .map_err(|_| "storage state lock poisoned".to_string())?;
-        let updated_at = now_ms();
-        for book in &mut state.library.books {
-            if !restored_source_ids.contains(&book.id) {
-                continue;
-            }
-            let Some((_, size, source_hash, _)) = source_restorations.get(&book.id) else {
-                continue;
-            };
-            adopt_book_source_fields(book, source_hash.clone(), *size)?;
-            book.updated_at = Some(updated_at);
-        }
-    }
-    storage.mark_library_dirty();
     storage.flush_content_dirty()?;
 
     let updated_books = restored_source_ids
@@ -222,7 +237,6 @@ pub(super) fn clear_book_caches_impl(
 }
 
 pub(super) fn rename_books_for_deletion(storage: &AppStorage, ids: &[String]) -> Result<Vec<PathBuf>, String> {
-    let _import_guard = storage.lock_import()?;
     let ids = ids.iter().filter(|id| !id.is_empty()).cloned().collect::<HashSet<_>>();
 
     if ids.is_empty() {
@@ -251,6 +265,7 @@ pub(super) fn rename_books_for_deletion(storage: &AppStorage, ids: &[String]) ->
 
     let mut renamed_books = Vec::new();
     for id in &ids {
+        storage.release_archive_resource(id);
         storage.remove_derived_memory_caches(id);
         match rename_path_for_deletion(&storage.book_dir(id)) {
             Ok(Some(path)) => renamed_books.push((id.clone(), path)),
@@ -512,7 +527,15 @@ pub(super) fn enqueue_pending_delete_cleanup(tasks: &TaskService, paths: Vec<Pat
 pub(super) fn delete_books_impl(storage: &AppStorage, tasks: &TaskService, ids: Vec<String>) -> Result<(), String> {
     let started = Instant::now();
     let source_count = ids.len();
-    let pending_deletes = rename_books_for_deletion(storage, &ids)?;
+    let _import_guard = storage.lock_import()?;
+    let pending_deletes = tasks.run_books_exclusive(&ids, TaskPriority::Critical, || {
+        let _cache_flush_guard = storage
+            .inner
+            .derived_cache_flush_lock
+            .lock()
+            .map_err(|_| "derived cache flush lock poisoned".to_string())?;
+        rename_books_for_deletion(storage, &ids)
+    })?;
     let pending_delete_count = pending_deletes.len();
     storage.flush_content_dirty()?;
     enqueue_pending_delete_cleanup(tasks, pending_deletes);

@@ -201,6 +201,19 @@ fn store_search_text_memory_cache(
     dirty: bool,
     persistent: bool,
 ) -> Result<(), String> {
+    let state = storage
+        .inner
+        .state
+        .lock()
+        .map_err(|_| "storage state lock poisoned".to_string())?;
+    if !state
+        .library
+        .books
+        .iter()
+        .any(|book| book.id == id && search_text_cache_matches_book(&cache, book))
+    {
+        return Err("Search text cache is stale".to_string());
+    }
     let mut caches = storage
         .inner
         .search_text_caches
@@ -208,6 +221,7 @@ fn store_search_text_memory_cache(
         .map_err(|_| "search text cache lock poisoned".to_string())?;
     caches.insert(id.clone(), cache);
     drop(caches);
+    drop(state);
     storage.touch_derived_cache(&id, dirty, false, persistent)?;
     storage.enforce_derived_cache_limits()?;
 
@@ -219,7 +233,7 @@ fn load_search_text_memory_cache(
     book: &StoredBook,
 ) -> Result<Option<Arc<SearchTextCache>>, String> {
     let cache = {
-        let mut caches = storage
+        let caches = storage
             .inner
             .search_text_caches
             .lock()
@@ -227,10 +241,7 @@ fn load_search_text_memory_cache(
         let cache = caches.get(&book.id).cloned();
         match cache {
             Some(cache) if search_text_cache_matches_book(&cache, book) => Some(cache),
-            Some(_) => {
-                caches.remove(&book.id);
-                None
-            }
+            Some(_) => None,
             None => None,
         }
     };
@@ -312,17 +323,14 @@ fn load_image_index_memory_cache(
     book: &StoredBook,
 ) -> Result<Option<Arc<ImageIndexCache>>, String> {
     let cache = {
-        let mut caches = storage
+        let caches = storage
             .inner
             .image_index_caches
             .lock()
             .map_err(|_| "image index cache lock poisoned".to_string())?;
         match caches.get(&book.id).cloned() {
             Some(cache) if image_index_cache_matches_book(&cache, book) => Some(cache),
-            Some(_) => {
-                caches.remove(&book.id);
-                None
-            }
+            Some(_) => None,
             None => None,
         }
     };
@@ -339,12 +347,26 @@ fn store_image_index_memory_cache(
     dirty: bool,
     persistent: bool,
 ) -> Result<(), String> {
+    let state = storage
+        .inner
+        .state
+        .lock()
+        .map_err(|_| "storage state lock poisoned".to_string())?;
+    if !state
+        .library
+        .books
+        .iter()
+        .any(|book| book.id == id && image_index_cache_matches_book(&cache, book))
+    {
+        return Err("Image index cache is stale".to_string());
+    }
     storage
         .inner
         .image_index_caches
         .lock()
         .map_err(|_| "image index cache lock poisoned".to_string())?
         .insert(id.clone(), cache);
+    drop(state);
     storage.touch_derived_cache(&id, false, dirty, persistent)?;
     storage.enforce_derived_cache_limits()
 }
@@ -1845,20 +1867,72 @@ impl AppStorage {
             if count <= DERIVED_CACHE_BOOK_LIMIT && bytes <= DERIVED_CACHE_MEMORY_SOFT_LIMIT {
                 return Ok(());
             }
+            let cached_ids = {
+                let search = self
+                    .inner
+                    .search_text_caches
+                    .lock()
+                    .map_err(|_| "search text cache lock poisoned".to_string())?;
+                let image = self
+                    .inner
+                    .image_index_caches
+                    .lock()
+                    .map_err(|_| "image index cache lock poisoned".to_string())?;
+                search.keys().chain(image.keys()).cloned().collect::<HashSet<_>>()
+            };
             let candidate = self
                 .inner
                 .derived_cache_states
                 .lock()
                 .map_err(|_| "derived cache state lock poisoned".to_string())?
                 .iter()
+                .filter(|(id, _)| cached_ids.contains(*id))
                 .min_by_key(|(_, state)| (state.active, state.persistent, state.last_accessed))
                 .map(|(id, _)| id.clone());
             let Some(candidate) = candidate else {
                 return Ok(());
             };
             self.flush_derived_cache(&candidate)?;
-            self.remove_derived_memory_caches(&candidate);
+            self.evict_derived_memory_cache(&candidate, None)?;
         }
+    }
+
+    fn evict_derived_memory_cache(&self, id: &str, expired_at: Option<Instant>) -> Result<(), String> {
+        let mut search = self
+            .inner
+            .search_text_caches
+            .lock()
+            .map_err(|_| "search text cache lock poisoned".to_string())?;
+        let mut image = self
+            .inner
+            .image_index_caches
+            .lock()
+            .map_err(|_| "image index cache lock poisoned".to_string())?;
+        let mut states = self
+            .inner
+            .derived_cache_states
+            .lock()
+            .map_err(|_| "derived cache state lock poisoned".to_string())?;
+        // A reader may have reopened or touched this cache while its disk flush was running.
+        if let Some(now) = expired_at
+            && !states.get(id).is_some_and(|state| {
+                !state.active
+                    && state
+                        .cold_since
+                        .is_some_and(|cold| now.saturating_duration_since(cold) >= DERIVED_CACHE_COLD_TTL)
+            })
+        {
+            return Ok(());
+        }
+        search.remove(id);
+        image.remove(id);
+        if let Some(state) = states.get_mut(id).filter(|state| state.active) {
+            state.search_dirty = false;
+            state.image_dirty = false;
+        } else {
+            states.remove(id);
+        }
+        Ok(())
     }
 
     pub(super) fn maintain_derived_caches(&self) -> Result<(), String> {
@@ -1879,7 +1953,7 @@ impl AppStorage {
             .collect::<Vec<_>>();
         for id in expired {
             self.flush_derived_cache(&id)?;
-            self.remove_derived_memory_caches(&id);
+            self.evict_derived_memory_cache(&id, Some(now))?;
         }
         self.enforce_derived_cache_limits()
     }
@@ -2191,6 +2265,42 @@ mod tests {
                 .search_text_cache_path("book", book.source_revision, book.revision)
                 .exists()
         );
+        let current_book = storage.stored_book("book").unwrap();
+        let current = Arc::new(test_cache(&current_book, "current content"));
+        store_search_text_memory_cache(&storage, "book".into(), current.clone(), false, true).unwrap();
+        assert!(store_search_text_memory_cache(&storage, "book".into(), Arc::new(cache), false, true).is_err());
+        assert_eq!(
+            load_search_text_memory_cache(&storage, &current_book)
+                .unwrap()
+                .unwrap()
+                .sections[0]
+                .text,
+            "current content"
+        );
+        // A stale reader must not evict an index already built for the current book.
+        assert!(load_search_text_memory_cache(&storage, &book).unwrap().is_none());
+        assert!(
+            load_search_text_memory_cache(&storage, &current_book)
+                .unwrap()
+                .is_some()
+        );
+
+        let image = |book: &StoredBook| {
+            Arc::new(ImageIndexCache {
+                version: IMAGE_INDEX_CACHE_VERSION,
+                source_revision: book.source_revision,
+                revision: book.revision,
+                sections: Vec::new(),
+            })
+        };
+        store_image_index_memory_cache(&storage, "book".into(), image(&current_book), false, true).unwrap();
+        assert!(store_image_index_memory_cache(&storage, "book".into(), image(&book), false, true).is_err());
+        assert!(load_image_index_memory_cache(&storage, &book).unwrap().is_none());
+        assert!(
+            load_image_index_memory_cache(&storage, &current_book)
+                .unwrap()
+                .is_some()
+        );
 
         let _ = fs::remove_dir_all(root);
     }
@@ -2204,6 +2314,7 @@ mod tests {
         let storage = test_storage(&root, books.clone());
 
         for book in &books {
+            storage.set_derived_cache_active(&book.id, true).unwrap();
             store_search_text_memory_cache(
                 &storage,
                 book.id.clone(),
@@ -2219,6 +2330,13 @@ mod tests {
         assert!(caches.len() <= DERIVED_CACHE_BOOK_LIMIT);
         assert!(!caches.contains_key("book-0"));
         assert!(caches.contains_key(&format!("book-{DERIVED_CACHE_BOOK_LIMIT}")));
+        drop(caches);
+        for book in &books {
+            assert!(
+                storage.derived_cache_is_active(&book.id).unwrap(),
+                "evicting an index ended its reader session"
+            );
+        }
 
         let _ = fs::remove_dir_all(root);
     }

@@ -189,14 +189,31 @@ pub(in crate::storage) fn prepare_epub_import(
 
 pub(in crate::storage) fn commit_prepared_epub_import(
     storage: &AppStorage,
+    tasks: &TaskService,
     prepared: PreparedEpubImport,
-    mut import_index: Option<&mut BookImportLookupIndex>,
+    import_index: Option<&mut BookImportLookupIndex>,
 ) -> Result<Option<(BookRecord, ImportFinalizer)>, String> {
     let _import_guard = if import_index.is_none() {
         Some(storage.lock_import()?)
     } else {
         None
     };
+    let id = import_support::import_book_id(storage, import_index.as_deref(), &prepared.source_path, &prepared.hash)?;
+    tasks.run_book_exclusive(&id, TaskPriority::Foreground, || {
+        let _cache_flush_guard = storage
+            .inner
+            .derived_cache_flush_lock
+            .lock()
+            .map_err(|_| "derived cache flush lock poisoned".to_string())?;
+        commit_prepared_epub_import_locked(storage, prepared, import_index)
+    })
+}
+
+fn commit_prepared_epub_import_locked(
+    storage: &AppStorage,
+    prepared: PreparedEpubImport,
+    mut import_index: Option<&mut BookImportLookupIndex>,
+) -> Result<Option<(BookRecord, ImportFinalizer)>, String> {
     let PreparedEpubImport {
         source_path,
         source_storage,
@@ -345,7 +362,7 @@ pub(in crate::storage) fn commit_prepared_epub_import(
                 remove_epub_import_temp(&temp_path);
             }
         } else if adopt_source_only {
-            storage.remove_derived_memory_caches(&id);
+            storage.remove_derived_memory_cache_data(&id);
             remove_book_derived_cache_files(storage, &id)?;
             if source_storage == SourceStorage::Managed {
                 let book_path = storage.book_dir(&id).join(BOOK_FILE);
@@ -357,7 +374,7 @@ pub(in crate::storage) fn commit_prepared_epub_import(
             let (parsed, content_mode) = inspection
                 .take()
                 .ok_or_else(|| "EPUB inspection is unavailable for imported content".to_string())?;
-            storage.remove_derived_memory_caches(&id);
+            storage.remove_derived_memory_cache_data(&id);
             file_transaction = Some(ImportFileTransaction::begin(storage, &id)?);
             let dir = storage.book_dir(&id);
             let book_path = dir.join(BOOK_FILE);
@@ -399,6 +416,7 @@ pub(in crate::storage) fn commit_prepared_epub_import(
                     .iter()
                     .position(|stored| stored.id == id && stored.scope == BookScope::External)
                     .ok_or_else(|| "External book changed while it was being added to the library".to_string())?;
+                import_support::preserve_book_reading_state(&mut book, &state.library.books[stored_index]);
                 state.library.books[stored_index] = book.clone();
                 stored_index
             } else {

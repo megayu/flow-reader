@@ -22,6 +22,9 @@ fn ensure_book_package_path_with(
     materialize: impl FnOnce(&AppStorage, &StoredBook) -> Result<PathBuf, String>,
 ) -> Result<PathBuf, String> {
     let started = Instant::now();
+    if !book_content_still_current(storage, book)? {
+        return Err("Unpacked package is stale".to_string());
+    }
     if let Ok(opf_path) = find_unpacked_opf_path(&storage.book_dir(&book.id).join(UNPACKED_DIR)) {
         let mut fields = vec![
             ("book", book.id.clone()),
@@ -42,8 +45,16 @@ fn ensure_book_package_path_with(
     let diagnostics_storage = storage.clone();
     let diagnostics_book_id = book.id.clone();
     let task_runner = tasks.clone();
-    let result = tasks.get_or_run(key, TaskPriority::Foreground, move || {
-        task_runner.run_book_exclusive(&book.id, TaskPriority::Foreground, || {
+    // Acquire the book before joining materialization work: callers can already own
+    // this reentrant lock, and must not wait for a task that is waiting for them.
+    let result = tasks.run_book_exclusive(&book.id, TaskPriority::Foreground, || {
+        if !book_content_still_current(&storage, &book)? {
+            return Err("Unpacked package is stale".to_string());
+        }
+        if let Ok(path) = find_unpacked_opf_path(&storage.book_dir(&book.id).join(UNPACKED_DIR)) {
+            return Ok(path);
+        }
+        task_runner.get_or_run(key, TaskPriority::Foreground, || {
             task_runner.run_io_observed(storage.root(), book.size, TaskPriority::Foreground, || {
                 materialize(&storage, &book)
             })

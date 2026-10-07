@@ -254,6 +254,30 @@ pub(super) fn existing_book_import(
         .or_else(|| export_identity_index.map(ExistingBookImport::AdoptSource))
 }
 
+// Resolve identity under the import lock; the importer re-reads the book after acquiring its book lock.
+pub(super) fn import_book_id(
+    storage: &AppStorage,
+    index: Option<&BookImportLookupIndex>,
+    source_path: &Path,
+    hash: &str,
+) -> Result<String, String> {
+    let state = storage
+        .inner
+        .state
+        .lock()
+        .map_err(|_| "storage state lock poisoned".to_string())?;
+    Ok(
+        match existing_book_import(index, &state.library.books, source_path, hash) {
+            Some(
+                ExistingBookImport::SameContent(i)
+                | ExistingBookImport::AdoptSource(i)
+                | ExistingBookImport::ReplaceContent(i),
+            ) => state.library.books[i].id.clone(),
+            _ => id_from_hash(hash),
+        },
+    )
+}
+
 // The caller holds the storage state lock and owns record composition and lookup update ordering.
 pub(super) fn commit_imported_book_record(
     books: &mut Vec<StoredBook>,
@@ -278,12 +302,18 @@ pub(super) fn commit_imported_book_record(
         .position(|stored| stored.id == book.id)
         .ok_or_else(|| "Book was removed while it was being imported".to_string())?;
     let stored = &mut books[stored_index];
-    book.reading_status = stored.reading_status.clone();
-    book.cfi = stored.cfi.clone();
-    book.percentage = stored.percentage;
-    book.tag_ids = stored.tag_ids.clone();
+    preserve_book_reading_state(book, stored);
     *stored = book.clone();
     Ok(stored_index)
+}
+
+pub(super) fn preserve_book_reading_state(book: &mut StoredBook, current: &StoredBook) {
+    book.reading_status = current.reading_status.clone();
+    book.cfi = current.cfi.clone();
+    book.percentage = current.percentage;
+    book.tag_ids = current.tag_ids.clone();
+    book.last_read_at = book.last_read_at.max(current.last_read_at);
+    book.updated_at = book.updated_at.max(current.updated_at);
 }
 
 static IMPORT_WORK_SEQUENCE: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);

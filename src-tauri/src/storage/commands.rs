@@ -676,8 +676,8 @@ pub(super) fn import_epub_paths_impl(
         });
 
         for (path, prepared) in chunk.iter().zip(prepared) {
-            let result =
-                prepared.and_then(|prepared| commit_prepared_epub_import(storage, prepared, Some(&mut import_index)));
+            let result = prepared
+                .and_then(|prepared| commit_prepared_epub_import(storage, tasks, prepared, Some(&mut import_index)));
             match result {
                 Ok(Some((book, finalizer))) => {
                     if let Some(book) = progress.emit_success(storage, book, finalizer.added_to_library) {
@@ -1096,19 +1096,16 @@ fn commit_prepared_text_selection(
     rules: Option<&TextImportRulesInput>,
     state: &mut TextImportBatchState<'_>,
 ) -> Result<Option<(BookRecord, ImportFinalizer)>, BookImportFailure> {
-    let bytes = prepared.size;
-    tasks
-        .run_io_observed(storage.root(), bytes, TaskPriority::Foreground, || {
-            import_text_path_impl(
-                storage,
-                prepared,
-                import,
-                copy_source_file,
-                rules,
-                Some(state.import_index),
-            )
-        })
-        .map_err(|error| book_import_failure(Path::new(&import.path), error))
+    import_text_path_impl(
+        storage,
+        tasks,
+        prepared,
+        import,
+        copy_source_file,
+        rules,
+        Some(state.import_index),
+    )
+    .map_err(|error| book_import_failure(Path::new(&import.path), error))
 }
 
 fn import_text_paths_direct(
@@ -1303,15 +1300,15 @@ pub async fn get_book_reader_source(
     let storage = (*storage).clone();
     let tasks = (*tasks).clone();
     tauri::async_runtime::spawn_blocking(move || {
-        let book = storage.stored_book(&id)?;
-        let source = get_book_reader_source_impl(&storage, &tasks, &book)?;
-        if let Err(error) = tasks.run_book_exclusive(&id, TaskPriority::Critical, || {
-            storage.set_derived_cache_active(&id, true)
-        }) {
-            storage.release_archive_resource(&id);
-            return Err(error);
-        }
-        Ok(source)
+        tasks.run_book_exclusive(&id, TaskPriority::Foreground, || {
+            let book = storage.stored_book(&id)?;
+            let source = get_book_reader_source_impl(&storage, &tasks, &book)?;
+            if let Err(error) = storage.set_derived_cache_active(&id, true) {
+                storage.release_archive_resource(&id);
+                return Err(error);
+            }
+            Ok(source)
+        })
     })
     .await
     .map_err(|error| error.to_string())?
@@ -1579,12 +1576,47 @@ pub async fn export_book(
 }
 
 #[tauri::command]
-pub fn cleanup_external_book(storage: State<'_, AppStorage>, id: String) -> Result<(), String> {
-    cleanup_external_book_heavy_files(&storage, &id)
+pub async fn cleanup_external_book(
+    storage: State<'_, AppStorage>,
+    tasks: State<'_, TaskService>,
+    id: String,
+) -> Result<(), String> {
+    let storage = (*storage).clone();
+    let tasks = (*tasks).clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        let _import_guard = storage.lock_import()?;
+        tasks.run_book_exclusive(&id, TaskPriority::Critical, || {
+            // A close request can arrive after the book has reopened or entered the library.
+            if storage.derived_cache_is_active(&id)? || storage.stored_book(&id)?.scope != BookScope::External {
+                return Ok(());
+            }
+            cleanup_external_book_heavy_files(&storage, &id)
+        })
+    })
+    .await
+    .map_err(|error| error.to_string())?
 }
 
 #[tauri::command]
-pub fn update_book(storage: State<'_, AppStorage>, id: String, changes: Value) -> Result<Option<CoverRecord>, String> {
+pub async fn update_book(
+    storage: State<'_, AppStorage>,
+    tasks: State<'_, TaskService>,
+    id: String,
+    changes: Value,
+) -> Result<Option<CoverRecord>, String> {
+    let storage = (*storage).clone();
+    let tasks = (*tasks).clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        let _import_guard = storage.lock_import()?;
+        tasks.run_book_exclusive(&id, TaskPriority::Foreground, || {
+            update_book_impl(&storage, id.clone(), changes)
+        })
+    })
+    .await
+    .map_err(|error| error.to_string())?
+}
+
+fn update_book_impl(storage: &AppStorage, id: String, changes: Value) -> Result<Option<CoverRecord>, String> {
     let Some(object) = changes.as_object() else {
         return Ok(None);
     };
@@ -1618,9 +1650,9 @@ pub fn update_book(storage: State<'_, AppStorage>, id: String, changes: Value) -
             if book.source_format == BookSourceFormat::Txt
                 && let Some(cover) = cover.as_ref()
             {
-                write_text_cover_to_unpacked(&storage, &id, cover)?;
+                write_text_cover_to_unpacked(storage, &id, cover)?;
             }
-            write_cover(&storage, &id, cover)?;
+            write_cover(storage, &id, cover)?;
             cover_changed = true;
         }
         if let Some(updated_at) = object.get("updatedAt").and_then(Value::as_u64)
@@ -1647,7 +1679,7 @@ pub fn update_book(storage: State<'_, AppStorage>, id: String, changes: Value) -
     storage.flush_content_dirty()?;
 
     if cover_changed {
-        return read_cover_record(&storage, id).map(Some);
+        return read_cover_record(storage, id).map(Some);
     }
 
     Ok(None)

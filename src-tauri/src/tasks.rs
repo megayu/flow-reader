@@ -476,6 +476,24 @@ impl TaskService {
         }
     }
 
+    pub(crate) fn run_books_exclusive<T>(
+        &self,
+        book_ids: &[String],
+        priority: TaskPriority,
+        task: impl FnOnce() -> Result<T, String>,
+    ) -> Result<T, String> {
+        self.ensure_accepting(priority)?;
+        // Batch mutations retain every permit through publication, in a stable order.
+        let mut ids = book_ids.iter().collect::<Vec<_>>();
+        ids.sort_unstable();
+        ids.dedup();
+        let mut permits = Vec::with_capacity(ids.len());
+        for id in ids {
+            permits.push(self.book_lock(id)?.acquire()?);
+        }
+        task()
+    }
+
     fn book_lock(&self, book_id: &str) -> Result<Arc<BookOperationLock>, String> {
         let mut locks = self
             .inner

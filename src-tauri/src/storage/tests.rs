@@ -766,7 +766,17 @@ fn cache_clear_discards_only_closed_edits_without_requiring_active_sources() {
     // The active book's original has disappeared; its working copy is still in use.
     storage.set_derived_cache_active("active", true).unwrap();
     let updated =
-        super::deletion::clear_book_caches_impl(&storage, &tasks, true, Default::default(), |_, _| {}).unwrap();
+        super::deletion::clear_book_caches_impl(&storage, &tasks, true, Default::default(), |completed, _| {
+            if completed == 1 {
+                let restored = storage.library_book("closed").unwrap();
+                assert!(
+                    restored.source_revision > books[0].source_revision,
+                    "released content still has its old revision"
+                );
+                assert!(!super::has_unexported_book_changes(&restored));
+            }
+        })
+        .unwrap();
     assert_eq!(updated.len(), 1);
     assert_eq!(updated[0].id, "closed");
     assert_eq!(
@@ -2348,6 +2358,46 @@ fn unpack_package_reuses_in_flight_task_for_same_book_revision() {
     assert!(published.contains("first") || published.contains("second"));
 
     let _ = fs::remove_dir_all(root);
+}
+
+#[test]
+fn stale_materialization_requests_do_not_recreate_book_content() {
+    for format in [BookSourceFormat::Txt, BookSourceFormat::Epub] {
+        for deleted in [false, true] {
+            let root = std::env::temp_dir().join(format!(
+                "flow-reader-stale-materialize-{}-{}",
+                std::process::id(),
+                SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos()
+            ));
+            fs::create_dir_all(&root).unwrap();
+            let mut book = test_library_book(format);
+            book.source_storage = SourceStorage::Referenced;
+            book.source_path = root.join(if format == BookSourceFormat::Txt {
+                "original.txt"
+            } else {
+                "original.epub"
+            });
+            if format == BookSourceFormat::Txt {
+                fs::write(&book.source_path, "第一章 示例\n正文。\n").unwrap();
+            } else {
+                write_minimal_epub_file(&book.source_path, "Example", "Body");
+            }
+            let storage = test_storage_with_book(&root, book.clone());
+            let tasks = TaskService::default();
+            if deleted {
+                super::deletion::delete_books_impl(&storage, &tasks, vec![book.id.clone()]).unwrap();
+            } else {
+                mark_library_book_content_updated(&storage, &book.id).unwrap();
+            }
+            let result = super::ensure_book_package_path(&storage, &tasks, &book);
+            assert!(result.is_err(), "stale request accepted: {format:?}, deleted={deleted}");
+            assert!(!storage.book_dir(&book.id).join(UNPACKED_DIR).exists());
+            if deleted {
+                assert!(!storage.book_dir(&book.id).exists(), "deleted directory was recreated");
+            }
+            fs::remove_dir_all(root).unwrap();
+        }
+    }
 }
 
 #[test]

@@ -1654,17 +1654,40 @@ fn escape_svg(value: &str) -> String {
 
 pub(super) fn import_text_path_impl(
     storage: &AppStorage,
+    tasks: &TaskService,
     prepared: Arc<PreparedTextImport>,
     import: &TextImportSelection,
     copy_source_file: bool,
     rules: Option<&TextImportRulesInput>,
-    mut import_index: Option<&mut BookImportLookupIndex>,
+    import_index: Option<&mut BookImportLookupIndex>,
 ) -> Result<Option<(BookRecord, ImportFinalizer)>, String> {
     let _import_guard = if import_index.is_none() {
         Some(storage.lock_import()?)
     } else {
         None
     };
+    let id = import_support::import_book_id(storage, import_index.as_deref(), &prepared.path, &prepared.hash)?;
+    tasks.run_book_exclusive(&id, TaskPriority::Foreground, || {
+        let _cache_flush_guard = storage
+            .inner
+            .derived_cache_flush_lock
+            .lock()
+            .map_err(|_| "derived cache flush lock poisoned".to_string())?;
+        // A reader can hold the book lock while waiting for an I/O permit.
+        tasks.run_io_observed(storage.root(), prepared.size, TaskPriority::Foreground, || {
+            import_text_path_locked(storage, prepared, import, copy_source_file, rules, import_index)
+        })
+    })
+}
+
+fn import_text_path_locked(
+    storage: &AppStorage,
+    prepared: Arc<PreparedTextImport>,
+    import: &TextImportSelection,
+    copy_source_file: bool,
+    rules: Option<&TextImportRulesInput>,
+    mut import_index: Option<&mut BookImportLookupIndex>,
+) -> Result<Option<(BookRecord, ImportFinalizer)>, String> {
     fs::create_dir_all(books_root(storage.root())).map_err(|error| error.to_string())?;
 
     let path = &prepared.path;
@@ -1782,11 +1805,11 @@ pub(super) fn import_text_path_impl(
     let mut file_transaction = None;
     let result = (|| -> Result<Option<(BookRecord, ImportFinalizer)>, String> {
         if adopt_source_only {
-            storage.remove_derived_memory_caches(&id);
+            storage.remove_derived_memory_cache_data(&id);
             remove_book_derived_cache_files(storage, &id)?;
         }
         if should_copy {
-            storage.remove_derived_memory_caches(&id);
+            storage.remove_derived_memory_cache_data(&id);
             file_transaction = Some(ImportFileTransaction::begin(storage, &id)?);
             let dir = storage.book_dir(&id);
             let source_text_path = dir.join(SOURCE_TEXT_FILE);
