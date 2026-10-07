@@ -270,7 +270,7 @@ mod tests {
         net::{Shutdown, TcpListener},
         sync::Arc,
         thread,
-        time::Duration,
+        time::{Duration, Instant},
     };
 
     use reqwest::Url;
@@ -402,27 +402,68 @@ mod tests {
 
     fn serve_once(response: &str, delay: Duration) -> (Url, thread::JoinHandle<()>) {
         let listener = TcpListener::bind("127.0.0.1:0").expect("bind test server");
+        listener.set_nonblocking(true).expect("set test listener nonblocking");
         let address = listener.local_addr().expect("test server address");
         let response = response
             .replacen("\r\n\r\n", "\r\nConnection: close\r\n\r\n", 1)
             .into_bytes();
         let handle = thread::spawn(move || {
-            let (mut stream, _) = listener.accept().expect("accept request");
+            let deadline = Instant::now() + Duration::from_secs(5);
+            let mut stream = loop {
+                match listener.accept() {
+                    Ok((stream, _)) => break stream,
+                    Err(error) if error.kind() == std::io::ErrorKind::WouldBlock => {
+                        assert!(
+                            Instant::now() < deadline,
+                            "timed out waiting for dictionary HTTP connection"
+                        );
+                        thread::sleep(Duration::from_millis(5));
+                    }
+                    Err(error) => panic!("accept dictionary HTTP connection: {error}"),
+                }
+            };
+            stream.set_nonblocking(false).expect("set test stream blocking");
+            stream
+                .set_write_timeout(Some(Duration::from_secs(5)))
+                .expect("set response write timeout");
             let mut request = Vec::new();
             let mut chunk = [0_u8; 1024];
-            while !request.windows(4).any(|window| window == b"\r\n\r\n") {
-                let read = stream.read(&mut chunk).expect("read request");
+            loop {
+                let remaining = deadline
+                    .checked_duration_since(Instant::now())
+                    .filter(|remaining| !remaining.is_zero())
+                    .expect("timed out waiting for dictionary HTTP request headers");
+                stream
+                    .set_read_timeout(Some(remaining))
+                    .expect("set request header timeout");
+                let read = stream
+                    .read(&mut chunk)
+                    .expect("read dictionary HTTP request headers before deadline");
                 if read == 0 {
                     break;
                 }
+                let scan_start = request.len().saturating_sub(3);
                 request.extend_from_slice(&chunk[..read]);
+                if request[scan_start..].windows(4).any(|window| window == b"\r\n\r\n") {
+                    break;
+                }
             }
             thread::sleep(delay);
             if stream.write_all(&response).is_ok() {
                 let _ = stream.flush();
                 let _ = stream.shutdown(Shutdown::Write);
-                let _ = stream.set_read_timeout(Some(Duration::from_secs(1)));
-                while stream.read(&mut chunk).is_ok_and(|read| read > 0) {}
+                let drain_deadline = Instant::now() + Duration::from_secs(1);
+                while let Some(remaining) = drain_deadline.checked_duration_since(Instant::now()) {
+                    if remaining.is_zero() {
+                        break;
+                    }
+                    stream
+                        .set_read_timeout(Some(remaining))
+                        .expect("set connection close timeout");
+                    if !stream.read(&mut chunk).is_ok_and(|read| read > 0) {
+                        break;
+                    }
+                }
             }
         });
 

@@ -2234,6 +2234,16 @@ mod tests {
             })
         };
 
+        let deadline = std::time::Instant::now() + Duration::from_secs(5);
+        for (name, worker) in [
+            ("first search index build", &first),
+            ("second search index build", &second),
+        ] {
+            while !worker.is_finished() {
+                assert!(std::time::Instant::now() < deadline, "timed out waiting for {name}");
+                thread::sleep(Duration::from_millis(10));
+            }
+        }
         let first = first.join().unwrap().unwrap();
         let second = second.join().unwrap().unwrap();
 
