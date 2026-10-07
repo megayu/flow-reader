@@ -1,5 +1,8 @@
 use super::*;
 
+// Cleanup tasks use the path as their identity; do not reuse one during this process.
+static DELETE_SEQUENCE: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+
 pub(super) fn remove_obsolete_schema_caches(
     storage: &AppStorage,
     id: &str,
@@ -300,8 +303,10 @@ fn restore_renamed_book_directories(storage: &AppStorage, renamed_books: &[(Stri
 }
 
 pub(super) fn rename_path_for_deletion(path: &Path) -> Result<Option<PathBuf>, String> {
-    if !path.exists() {
-        return Ok(None);
+    match fs::symlink_metadata(path) {
+        Ok(_) => {}
+        Err(error) if error.kind() == io::ErrorKind::NotFound => return Ok(None),
+        Err(error) => return Err(error.to_string()),
     }
 
     let parent = path
@@ -311,16 +316,25 @@ pub(super) fn rename_path_for_deletion(path: &Path) -> Result<Option<PathBuf>, S
         .file_name()
         .ok_or_else(|| "Delete target has no file name".to_string())?;
     let base = format!("{PENDING_DELETE_PREFIX}{}", name.to_string_lossy());
-    for index in 0.. {
-        let suffix = if index == 0 { String::new() } else { format!("-{index}") };
-        let renamed_path = parent.join(format!("{base}{suffix}"));
-        if !renamed_path.exists() {
-            fs::rename(path, &renamed_path).map_err(|error| error.to_string())?;
-            return Ok(Some(renamed_path));
+    loop {
+        let index = DELETE_SEQUENCE
+            .fetch_update(
+                std::sync::atomic::Ordering::Relaxed,
+                std::sync::atomic::Ordering::Relaxed,
+                |index| index.checked_add(1),
+            )
+            .map_err(|_| "Deferred-delete sequence exhausted".to_string())?;
+        // Book IDs cannot contain '.', so the collision suffix is unambiguous on restart.
+        let renamed_path = parent.join(format!("{base}.{index}"));
+        match fs::symlink_metadata(&renamed_path) {
+            Ok(_) => continue,
+            Err(error) if error.kind() == io::ErrorKind::NotFound => {
+                fs::rename(path, &renamed_path).map_err(|error| error.to_string())?;
+                return Ok(Some(renamed_path));
+            }
+            Err(error) => return Err(error.to_string()),
         }
     }
-
-    unreachable!("pending-delete path loop should return")
 }
 
 fn list_pending_delete_paths(storage: &AppStorage) -> Result<Vec<PathBuf>, String> {
@@ -337,11 +351,126 @@ fn list_pending_delete_paths(storage: &AppStorage) -> Result<Vec<PathBuf>, Strin
                 .is_some_and(|name| name.starts_with(PENDING_DELETE_PREFIX))
             {
                 paths.push(entry.path());
+            } else if entry
+                .file_name()
+                .to_str()
+                .is_some_and(|name| name.starts_with(".import-backup-"))
+            {
+                eprintln!("Import backup retained for recovery: {}", entry.path().display());
             }
         }
     }
 
     Ok(paths)
+}
+
+pub(super) fn recover_pending_delete_paths(storage: &AppStorage) -> Result<Vec<PathBuf>, String> {
+    let paths = list_pending_delete_paths(storage)?;
+    if paths.is_empty() {
+        return Ok(Vec::new());
+    }
+
+    // Memory can contain an unflushed deletion. Missing/invalid disk state proves nothing.
+    // Unlike normal loading, recovery requires an explicit books list as commit evidence.
+    #[derive(Deserialize)]
+    struct PersistedLibrary {
+        version: u32,
+        books: Vec<StoredBook>,
+    }
+    let library_file = library_path(storage.root())?;
+    let library: PersistedLibrary = serde_json::from_slice(&fs::read(&library_file).map_err(|error| {
+        format!(
+            "Cannot read {}; deferred deletes retained: {error}",
+            library_file.display()
+        )
+    })?)
+    .map_err(|error| format!("Invalid {}; deferred deletes retained: {error}", library_file.display()))?;
+    let mut book_ids = HashSet::with_capacity(library.books.len());
+    if library.version != LIBRARY_VERSION
+        || library
+            .books
+            .iter()
+            .any(|book| !is_valid_book_storage_id(&book.id) || !book_ids.insert(book.id.as_str()))
+    {
+        return Err("Unsupported or invalid library; deferred deletes retained".to_string());
+    }
+
+    let mut candidates: HashMap<String, Vec<PathBuf>> = HashMap::new();
+    let mut ambiguous_ids = HashSet::new();
+    for path in paths {
+        let name = path.file_name().and_then(|name| name.to_str()).unwrap_or_default();
+        let name = name.strip_prefix(PENDING_DELETE_PREFIX).unwrap_or_default();
+        let id = if let Some((id, suffix)) = name.rsplit_once('.') {
+            if !suffix.is_empty()
+                && suffix.bytes().all(|byte| byte.is_ascii_digit())
+                && let Ok(index) = suffix.parse::<u64>()
+                && let Some(next) = index.checked_add(1)
+            {
+                // Reserve names used by startup cleanup before new operations can allocate them.
+                DELETE_SEQUENCE.fetch_max(next, std::sync::atomic::Ordering::Relaxed);
+                is_valid_book_storage_id(id).then_some(id)
+            } else {
+                None
+            }
+        } else if is_valid_book_storage_id(name) {
+            if let Some((base, suffix)) = name.rsplit_once('-')
+                && !suffix.is_empty()
+                && suffix.bytes().all(|byte| byte.is_ascii_digit())
+            {
+                // Legacy names cannot distinguish a numeric ID suffix from a collision suffix.
+                ambiguous_ids.insert(name.to_string());
+                ambiguous_ids.insert(base.to_string());
+                None
+            } else {
+                // Recognize legacy hash IDs, or an exact ID still present in the library.
+                (book_ids.contains(name) || (name.len() == 16 && name.bytes().all(|byte| byte.is_ascii_hexdigit())))
+                    .then_some(name)
+            }
+        } else {
+            None
+        };
+        if let Some(id) = id {
+            candidates.entry(id.to_string()).or_default().push(path);
+        } else {
+            eprintln!(
+                "Unrecognized or ambiguous deferred-delete path retained: {}",
+                path.display()
+            );
+        }
+    }
+
+    let mut cleanup = Vec::new();
+    for (id, paths) in candidates {
+        if paths.len() != 1 || ambiguous_ids.contains(&id) {
+            for path in paths {
+                eprintln!("Conflicting deferred-delete path retained: {}", path.display());
+            }
+            continue;
+        }
+        let path = &paths[0];
+        let original = storage.book_dir(&id);
+        let result = (|| -> Result<(), String> {
+            let metadata = fs::symlink_metadata(path).map_err(|error| error.to_string())?;
+            if !metadata.is_dir() || metadata.file_type().is_symlink() {
+                return Err("Expected a book directory".to_string());
+            }
+            match fs::symlink_metadata(&original) {
+                Ok(_) => return Err(format!("Destination already exists: {}", original.display())),
+                Err(error) if error.kind() == io::ErrorKind::NotFound => {}
+                Err(error) => return Err(error.to_string()),
+            }
+            if book_ids.contains(id.as_str()) {
+                fs::rename(path, &original).map_err(|error| error.to_string())?;
+            } else {
+                cleanup.push(path.clone());
+            }
+            Ok(())
+        })();
+        if let Err(error) = result {
+            eprintln!("Deferred-delete path retained at {}: {error}", path.display());
+        }
+    }
+    Ok(cleanup)
 }
 
 fn cleanup_pending_delete_path(path: &Path) -> Result<(), String> {
@@ -436,8 +565,8 @@ pub fn cleanup_all_external_book_heavy_files(storage: &AppStorage) -> Result<(),
 }
 
 pub fn schedule_existing_pending_delete_cleanup(storage: &AppStorage, tasks: &TaskService) {
-    match list_pending_delete_paths(storage) {
+    match recover_pending_delete_paths(storage) {
         Ok(paths) => enqueue_pending_delete_cleanup(tasks, paths),
-        Err(error) => eprintln!("Failed to list deferred-delete paths: {error}"),
+        Err(error) => eprintln!("Failed to recover deferred-delete paths: {error}"),
     }
 }

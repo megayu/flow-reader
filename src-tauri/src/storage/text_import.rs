@@ -1823,11 +1823,13 @@ pub(super) fn import_text_path_impl(
         Ok(Some((record, ImportFinalizer::new(file_transaction.take(), is_new))))
     })();
 
-    if result.is_err()
+    if let Err(original_error) = &result
         && let Some(transaction) = file_transaction
         && let Err(error) = transaction.rollback()
     {
-        eprintln!("Failed to roll back text import files: {error}");
+        return Err(format!(
+            "{original_error}; failed to roll back text import files: {error}"
+        ));
     }
     result
 }

@@ -372,15 +372,16 @@ pub fn run() {
             }
 
             let storage = storage::AppStorage::load(app.handle()).map_err(std::io::Error::other)?;
+            // Recover interrupted deletes before exposing storage to commands or maintenance.
+            if let Some(tasks) = app.try_state::<tasks::TaskService>() {
+                tasks.configure_io_for_path(storage.root());
+                storage::schedule_existing_pending_delete_cleanup(&storage, &tasks);
+            }
             let dictionary_registry = dictionary::registry::DictionaryRegistryStore::open_for_app(storage.root());
             app.manage(dictionary_registry);
             app.manage(dictionary::session::DictionarySessionManager::default());
             app.manage(storage.clone());
             storage.start_derived_cache_maintenance();
-            if let Some(tasks) = app.try_state::<tasks::TaskService>() {
-                tasks.configure_io_for_path(storage.root());
-                storage::schedule_existing_pending_delete_cleanup(&storage, &tasks);
-            }
 
             if let Some(window) = app.get_webview_window("main") {
                 #[cfg(target_os = "windows")]

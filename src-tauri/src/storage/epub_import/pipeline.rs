@@ -426,7 +426,7 @@ pub(in crate::storage) fn commit_prepared_epub_import(
     if result.as_ref().is_ok_and(Option::is_none) {
         remove_epub_import_temp(&temp_path);
     }
-    if result.is_err() {
+    if let Err(original_error) = &result {
         if let Some(replacement) = managed_source_replacement.take()
             && let Err(error) = replacement.rollback()
         {
@@ -442,7 +442,9 @@ pub(in crate::storage) fn commit_prepared_epub_import(
         if let Some(transaction) = file_transaction
             && let Err(error) = transaction.rollback()
         {
-            eprintln!("Failed to roll back EPUB import files: {error}");
+            return Err(format!(
+                "{original_error}; failed to roll back EPUB import files: {error}"
+            ));
         }
     }
 

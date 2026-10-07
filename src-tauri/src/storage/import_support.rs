@@ -308,6 +308,7 @@ pub(super) struct ImportFileTransaction {
     book_dir_existed: bool,
     backup_dir: PathBuf,
     moved: Vec<(PathBuf, PathBuf)>,
+    prepared: bool,
 }
 
 impl ImportFileTransaction {
@@ -339,21 +340,27 @@ impl ImportFileTransaction {
             book_dir_existed,
             backup_dir,
             moved: Vec::new(),
+            prepared: false,
         };
         for target in targets {
-            if !target.exists() {
-                continue;
-            }
             let Some(name) = target.file_name() else {
                 continue;
             };
             let backup = transaction.backup_dir.join(name);
-            if let Err(error) = fs::rename(&target, &backup) {
-                let _ = transaction.rollback();
-                return Err(error.to_string());
+            let result = match fs::symlink_metadata(&target) {
+                Ok(_) => fs::rename(&target, &backup),
+                Err(error) if error.kind() == io::ErrorKind::NotFound => continue,
+                Err(error) => Err(error),
+            };
+            if let Err(error) = result {
+                return match transaction.rollback() {
+                    Ok(()) => Err(error.to_string()),
+                    Err(rollback_error) => Err(format!("{error}; {rollback_error}")),
+                };
             }
             transaction.moved.push((backup, target));
         }
+        transaction.prepared = true;
         Ok(transaction)
     }
 
@@ -370,13 +377,26 @@ impl ImportFileTransaction {
     }
 
     pub(super) fn rollback(self) -> Result<(), String> {
-        let mut first_error = None;
-        let mut current_targets = [BOOK_FILE, SOURCE_TEXT_FILE, UNPACKED_DIR]
-            .into_iter()
-            .map(|name| self.book_dir.join(name))
-            .collect::<Vec<_>>();
-        if let Ok(entries) = fs::read_dir(&self.book_dir) {
-            for entry in entries.flatten() {
+        // Until preparation completes, paths not in `moved` still contain originals.
+        if self.prepared {
+            let mut current_targets = [BOOK_FILE, SOURCE_TEXT_FILE, UNPACKED_DIR]
+                .into_iter()
+                .map(|name| self.book_dir.join(name))
+                .collect::<Vec<_>>();
+            let entries = fs::read_dir(&self.book_dir).map_err(|error| {
+                format!(
+                    "Cannot inspect import output {}; backup retained at {}: {error}",
+                    self.book_dir.display(),
+                    self.backup_dir.display()
+                )
+            })?;
+            for entry in entries {
+                let entry = entry.map_err(|error| {
+                    format!(
+                        "Cannot inspect import output; backup retained at {}: {error}",
+                        self.backup_dir.display()
+                    )
+                })?;
                 if entry
                     .file_name()
                     .to_str()
@@ -385,33 +405,42 @@ impl ImportFileTransaction {
                     current_targets.push(entry.path());
                 }
             }
-        }
-        for target in current_targets {
-            if let Err(error) = remove_import_artifact(&target)
-                && first_error.is_none()
-            {
-                first_error = Some(error);
+            for target in current_targets {
+                remove_import_artifact(&target).map_err(|error| {
+                    format!(
+                        "Cannot remove import output {}; backup retained at {}: {error}",
+                        target.display(),
+                        self.backup_dir.display()
+                    )
+                })?;
             }
         }
         for (backup, target) in self.moved {
-            if let Err(error) = fs::rename(backup, target).map_err(|error| error.to_string())
-                && first_error.is_none()
-            {
-                first_error = Some(error);
-            }
+            fs::rename(&backup, &target).map_err(|error| {
+                format!(
+                    "Cannot restore {} to {}; remaining backup retained at {}: {error}",
+                    backup.display(),
+                    target.display(),
+                    self.backup_dir.display()
+                )
+            })?;
         }
-        if let Err(error) = fs::remove_dir_all(self.backup_dir).map_err(|error| error.to_string())
-            && first_error.is_none()
-        {
-            first_error = Some(error);
+        // Never recursively discard recovery material, including unexpected files.
+        fs::remove_dir(&self.backup_dir).map_err(|error| {
+            format!(
+                "Cannot remove restored backup directory {}: {error}",
+                self.backup_dir.display()
+            )
+        })?;
+        if !self.book_dir_existed {
+            fs::remove_dir(&self.book_dir).map_err(|error| {
+                format!(
+                    "Cannot remove empty import directory {}: {error}",
+                    self.book_dir.display()
+                )
+            })?;
         }
-        if !self.book_dir_existed
-            && let Err(error) = fs::remove_dir(&self.book_dir).map_err(|error| error.to_string())
-            && first_error.is_none()
-        {
-            first_error = Some(error);
-        }
-        first_error.map_or(Ok(()), Err)
+        Ok(())
     }
 }
 
@@ -449,12 +478,49 @@ impl ImportFinalizer {
 }
 
 fn remove_import_artifact(path: &Path) -> Result<(), String> {
-    let Ok(metadata) = fs::symlink_metadata(path) else {
-        return Ok(());
+    let metadata = match fs::symlink_metadata(path) {
+        Ok(metadata) => metadata,
+        Err(error) if error.kind() == io::ErrorKind::NotFound => return Ok(()),
+        Err(error) => return Err(error.to_string()),
     };
     if metadata.file_type().is_dir() {
         fs::remove_dir_all(path).map_err(|error| error.to_string())
     } else {
         fs::remove_file(path).map_err(|error| error.to_string())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn failed_import_rollback_preserves_unrestored_backup() {
+        let root = std::env::temp_dir().join(format!(
+            "flow-reader-import-restore-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        let book_dir = root.join("book");
+        let backup_dir = root.join("backup");
+        fs::create_dir_all(&backup_dir).unwrap();
+        // A file blocks access to the destination directory on every platform.
+        fs::write(&book_dir, b"unrelated blocker").unwrap();
+        let backup = backup_dir.join(SOURCE_TEXT_FILE);
+        fs::write(&backup, b"original source").unwrap();
+        let transaction = ImportFileTransaction {
+            book_dir: book_dir.clone(),
+            book_dir_existed: true,
+            backup_dir: backup_dir.clone(),
+            moved: vec![(backup.clone(), book_dir.join(SOURCE_TEXT_FILE))],
+            prepared: true,
+        };
+        assert!(transaction.rollback().is_err());
+        assert_eq!(fs::read(backup).unwrap(), b"original source");
+        assert_eq!(fs::read(&book_dir).unwrap(), b"unrelated blocker");
+        fs::remove_dir_all(root).unwrap();
     }
 }

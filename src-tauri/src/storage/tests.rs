@@ -23,11 +23,10 @@ use super::{
     normalize_unpacked_epub_structure, open_external_epub_path_impl, parent_zip_path, parse_text_import_document,
     path_to_client_string, read_image_index_cache, read_json_or_default, read_json_value_or_default,
     read_search_text_sections_from_unpacked, relative_zip_path, rename_books_for_deletion, replace_book_text_impl,
-    replace_xhtml_text, replace_xhtml_text_node, schedule_existing_pending_delete_cleanup,
-    search_text_cache_from_bytes, search_text_cache_to_bytes, search_text_in_cache, settings_path,
-    switch_book_content_mode_impl, text_content_opf, text_nav_xhtml, text_section_xhtml,
-    visible_search_text_from_xhtml, write_cover, write_epub_from_original_and_unpacked, write_epub_from_unpacked_dir,
-    write_image_index_cache_if_current, write_source_text_update,
+    replace_xhtml_text, replace_xhtml_text_node, search_text_cache_from_bytes, search_text_cache_to_bytes,
+    search_text_in_cache, settings_path, switch_book_content_mode_impl, text_content_opf, text_nav_xhtml,
+    text_section_xhtml, visible_search_text_from_xhtml, write_cover, write_epub_from_original_and_unpacked,
+    write_epub_from_unpacked_dir, write_image_index_cache_if_current, write_source_text_update,
 };
 use crate::tasks::TaskService;
 use serde_json::{Value, json};
@@ -668,27 +667,75 @@ fn delete_books_renames_all_book_directories_in_place_before_cleanup() {
 }
 
 #[test]
-fn startup_cleanup_removes_leftover_pending_delete_paths() {
+fn startup_cleanup_recovers_only_unambiguous_uncommitted_deletes() {
     let nonce = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos();
     let root = std::env::temp_dir().join(format!(
         "flow-reader-startup-cleanup-test-{}-{nonce}",
         std::process::id()
     ));
-    let storage = test_storage_with_book(&root, test_library_book(BookSourceFormat::Epub));
-    let pending_delete = root.join(BOOKS_DIR).join(".del-book-a-leftover");
-    fs::create_dir_all(&pending_delete).unwrap();
-    fs::write(pending_delete.join("marker.txt"), "leftover").unwrap();
-    let tasks = TaskService::default();
-
-    schedule_existing_pending_delete_cleanup(&storage, &tasks);
-    for _ in 0..100 {
-        if !pending_delete.exists() {
-            break;
-        }
-        thread::sleep(Duration::from_millis(10));
+    let storage = test_storage_with_books(
+        &root,
+        ["book-a", "book-b", "book-c", "book-d", "book-e"]
+            .map(|id| test_library_book_with_id(id, BookSourceFormat::Epub))
+            .to_vec(),
+    );
+    storage.mark_library_dirty();
+    storage.flush_content_dirty().unwrap();
+    // Memory may already reflect a deletion whose library write failed.
+    storage.inner.state.lock().unwrap().library.books.clear();
+    let books = root.join(BOOKS_DIR);
+    for name in [
+        ".del-book-a.0",
+        ".del-book-b.0",
+        ".del-book-c.0",
+        ".del-book-c.1",
+        ".del-book-d",
+        ".del-removed.0",
+        ".del-book-e",
+        ".del-book-e-1",
+        ".del-unknown-garbage",
+        ".del-.import-backup-1-0-book-a",
+        ".import-backup-1-0-book-a",
+        "book-b",
+    ] {
+        let path = books.join(name);
+        fs::create_dir_all(&path).unwrap();
+        fs::write(path.join("marker.txt"), name).unwrap();
     }
-
-    assert!(!pending_delete.exists());
+    let pending_delete = books.join(".del-removed.0");
+    let cleanup = super::deletion::recover_pending_delete_paths(&storage).unwrap();
+    assert_eq!(
+        fs::read_to_string(books.join("book-a/marker.txt")).unwrap(),
+        ".del-book-a.0"
+    );
+    assert_eq!(
+        fs::read_to_string(books.join("book-d/marker.txt")).unwrap(),
+        ".del-book-d"
+    );
+    assert_eq!(fs::read_to_string(books.join("book-b/marker.txt")).unwrap(), "book-b");
+    assert_eq!(cleanup, vec![pending_delete.clone()]);
+    for name in [
+        ".del-book-b.0",
+        ".del-book-c.0",
+        ".del-book-c.1",
+        ".del-book-e",
+        ".del-book-e-1",
+        ".del-unknown-garbage",
+        ".del-.import-backup-1-0-book-a",
+        ".import-backup-1-0-book-a",
+    ] {
+        assert_eq!(fs::read_to_string(books.join(name).join("marker.txt")).unwrap(), name);
+    }
+    // Missing/corrupt persisted state is not evidence that a delete committed.
+    fs::create_dir_all(&pending_delete).unwrap();
+    fs::write(pending_delete.join("marker.txt"), "keep").unwrap();
+    fs::remove_file(library_path(&root).unwrap()).unwrap();
+    assert!(super::deletion::recover_pending_delete_paths(&storage).is_err());
+    fs::write(library_path(&root).unwrap(), b"{").unwrap();
+    assert!(super::deletion::recover_pending_delete_paths(&storage).is_err());
+    fs::write(library_path(&root).unwrap(), br#"{"version":1}"#).unwrap();
+    assert!(super::deletion::recover_pending_delete_paths(&storage).is_err());
+    assert_eq!(fs::read(pending_delete.join("marker.txt")).unwrap(), b"keep");
 
     let _ = fs::remove_dir_all(root);
 }
