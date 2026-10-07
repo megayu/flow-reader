@@ -659,6 +659,9 @@ pub(super) fn import_epub_paths_impl(
         .map(PathBuf::from)
         .filter(|path| is_epub_file(path))
         .collect::<Vec<_>>();
+    if !paths.is_empty() {
+        check_import_library_writable(storage)?;
+    }
     let prepare_window = tasks.io_writer_limit().clamp(1, 4);
 
     for chunk in paths.chunks(prepare_window) {
@@ -1055,6 +1058,9 @@ pub(super) fn import_text_paths_impl(
         .into_iter()
         .filter(|import| is_txt_file(Path::new(&import.path)))
         .collect::<Vec<_>>();
+    if !imports.is_empty() {
+        check_import_library_writable(storage)?;
+    }
     let mut progress = BookImportProgressReporter::new(on_progress, imports.len());
     let mut import_index = BookImportLookupIndex::load(storage)?;
     let batch = {
@@ -1279,6 +1285,24 @@ fn import_text_paths_with_pipeline(
         skipped,
         finalizers,
     })
+}
+
+// Check current access without rewriting the library or reserving access for the batch.
+fn check_import_library_writable(storage: &AppStorage) -> Result<(), String> {
+    let path = library_path(storage.root())?;
+    let check = || -> io::Result<()> {
+        match fs::OpenOptions::new().write(true).open(&path) {
+            Ok(_) => {}
+            Err(error) if error.kind() == io::ErrorKind::NotFound => {}
+            Err(error) => return Err(error),
+        }
+        fs::create_dir_all(storage.root())?;
+        let probe = import_work_path(storage.root(), "import-check", "library");
+        let file = fs::OpenOptions::new().write(true).create_new(true).open(&probe)?;
+        drop(file);
+        fs::remove_file(probe)
+    };
+    check().map_err(|error| format!("Cannot access library storage for import ({}): {error}", path.display()))
 }
 
 fn finalize_import_batch(
