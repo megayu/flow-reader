@@ -402,14 +402,19 @@ impl AppStorage {
     }
 
     fn remove_derived_memory_caches(&self, id: &str) {
+        self.remove_derived_memory_cache_data(id);
+        if let Ok(mut states) = self.inner.derived_cache_states.lock() {
+            states.remove(id);
+        }
+    }
+
+    // Dropping indexes does not itself end a reader session.
+    fn remove_derived_memory_cache_data(&self, id: &str) {
         if let Ok(mut caches) = self.inner.search_text_caches.lock() {
             caches.remove(id);
         }
         if let Ok(mut caches) = self.inner.image_index_caches.lock() {
             caches.remove(id);
-        }
-        if let Ok(mut states) = self.inner.derived_cache_states.lock() {
-            states.remove(id);
         }
     }
 

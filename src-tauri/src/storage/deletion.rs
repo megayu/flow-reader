@@ -104,58 +104,61 @@ pub(super) fn clear_book_caches_impl(
             .map_err(|_| "storage state lock poisoned".to_string())?;
         state.library.books.clone()
     };
-    let all_ids = all_books.iter().map(|book| book.id.clone()).collect::<Vec<_>>();
-    let external_ids = all_books
-        .iter()
-        .filter(|book| book.scope == BookScope::External)
-        .map(|book| book.id.clone())
-        .collect::<HashSet<_>>();
-    let total = all_ids.len();
+    let total = all_books.len();
     report_progress(0, total);
 
-    let locally_modified_book_ids = all_books
-        .iter()
-        .filter(|book| book.scope == BookScope::Library && book.revision > book.source_revision)
-        .map(|book| book.id.clone())
-        .collect::<HashSet<_>>();
-    let source_restorations = if discard_unexported_edits {
-        all_books
-            .iter()
-            .filter(|book| {
-                book.scope == BookScope::Library
-                    && has_unexported_book_changes(book)
-                    && !preserved_unpacked_book_ids.contains(&book.id)
-            })
-            .map(|book| {
-                let path =
-                    unedited_source_path(storage, book).ok_or_else(|| "Book source is unavailable".to_string())?;
-                let size = fs::metadata(&path).map_err(|error| error.to_string())?.len();
-                let restore_managed_text =
-                    book.source_format == BookSourceFormat::Txt && book.source_storage == SourceStorage::Managed;
-                Ok((
-                    book.id.clone(),
-                    (path.clone(), size, hash_file(&path)?, restore_managed_text),
-                ))
-            })
-            .collect::<Result<HashMap<_, _>, String>>()?
-    } else {
-        HashMap::new()
-    };
+    let mut source_restorations = HashMap::new();
+    if discard_unexported_edits {
+        for book in &all_books {
+            if book.scope != BookScope::Library
+                || !has_unexported_book_changes(book)
+                || preserved_unpacked_book_ids.contains(&book.id)
+                || storage.derived_cache_is_active(&book.id)?
+            {
+                continue;
+            }
+            let path = unedited_source_path(storage, book).ok_or_else(|| "Book source is unavailable".to_string())?;
+            let size = fs::metadata(&path).map_err(|error| error.to_string())?.len();
+            let restore_managed_text =
+                book.source_format == BookSourceFormat::Txt && book.source_storage == SourceStorage::Managed;
+            let hash = hash_file(&path)?;
+            source_restorations.insert(book.id.clone(), (path, size, hash, restore_managed_text));
+        }
+    }
 
     let mut completed = 0;
     let mut restored_source_ids = Vec::new();
-    for id in all_ids {
+    for book in all_books {
+        // Editable publications are working copies, even before the first edit. Body writes can
+        // survive a failed library save, so equal revisions do not prove they are disposable.
+        let has_working_copy = book.scope == BookScope::Library
+            && (book.source_format == BookSourceFormat::Txt || book.editable || book.revision > book.source_revision);
+        let id = book.id;
         let restored_source = tasks.run_book_exclusive(&id, TaskPriority::Critical, || {
             let preserve_unpacked = preserved_unpacked_book_ids.contains(&id)
                 || storage.derived_cache_is_active(&id)?
-                || (locally_modified_book_ids.contains(&id) && !source_restorations.contains_key(&id));
+                || (has_working_copy && !source_restorations.contains_key(&id));
             {
                 let _flush_guard = storage
                     .inner
                     .derived_cache_flush_lock
                     .lock()
                     .map_err(|_| "derived cache flush lock poisoned".to_string())?;
-                storage.remove_derived_memory_caches(&id);
+                storage.remove_derived_memory_cache_data(&id);
+                // Keep active-reader ownership while forgetting only the discarded indexes.
+                {
+                    let mut states = storage
+                        .inner
+                        .derived_cache_states
+                        .lock()
+                        .map_err(|_| "derived cache state lock poisoned".to_string())?;
+                    if let Some(state) = states.get_mut(&id).filter(|state| state.active) {
+                        state.search_dirty = false;
+                        state.image_dirty = false;
+                    } else {
+                        states.remove(&id);
+                    }
+                }
                 remove_book_derived_cache_files(storage, &id)?;
             }
             if !preserve_unpacked {
@@ -163,7 +166,7 @@ pub(super) fn clear_book_caches_impl(
                     fs::copy(source_path, storage.book_dir(&id).join(SOURCE_TEXT_FILE))
                         .map_err(|error| error.to_string())?;
                 }
-                if external_ids.contains(&id) {
+                if book.scope == BookScope::External {
                     cleanup_external_book_heavy_files(storage, &id)?;
                 } else {
                     let unpacked = storage.book_dir(&id).join(UNPACKED_DIR);

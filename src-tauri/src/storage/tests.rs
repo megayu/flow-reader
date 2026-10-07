@@ -667,6 +667,131 @@ fn delete_books_renames_all_book_directories_in_place_before_cleanup() {
 }
 
 #[test]
+fn cache_clear_preserves_working_content_without_relying_on_saved_edit_revisions() {
+    let nonce = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos();
+    let root = std::env::temp_dir().join(format!("flow-reader-cache-boundary-{}-{nonce}", std::process::id()));
+    let cases = [
+        // Equal revisions also represent a restart after body write but before library save.
+        ("editable-epub", BookSourceFormat::Epub, true, 1, None, true),
+        ("managed-txt", BookSourceFormat::Txt, true, 1, None, true),
+        ("referenced-txt", BookSourceFormat::Txt, false, 1, None, true),
+        ("exported-epub", BookSourceFormat::Epub, true, 2, Some(2), true),
+        ("legacy-edited", BookSourceFormat::Epub, false, 2, Some(2), true),
+        ("active-epub", BookSourceFormat::Epub, false, 1, None, true),
+        ("readonly-epub", BookSourceFormat::Epub, false, 1, None, false),
+        ("external-epub", BookSourceFormat::Epub, false, 1, None, false),
+    ];
+    let books = cases
+        .iter()
+        .map(|(id, format, editable, revision, exported, _)| {
+            let mut book = test_library_book_with_id(id, *format);
+            book.editable = *editable;
+            book.revision = *revision;
+            book.latest_export_revision = *exported;
+            book.source_path = root.join(format!("{id}-missing-source"));
+            if *id == "referenced-txt" {
+                book.source_storage = SourceStorage::Referenced;
+            }
+            if *id == "external-epub" {
+                book.scope = BookScope::External;
+            }
+            book
+        })
+        .collect();
+    let storage = test_storage_with_books(&root, books);
+    let tasks = TaskService::default();
+    for (id, _, _, _, _, _) in &cases {
+        let dir = storage.book_dir(id);
+        fs::create_dir_all(dir.join(UNPACKED_DIR)).unwrap();
+        fs::write(dir.join(UNPACKED_DIR).join("body.xhtml"), b"current working text").unwrap();
+        fs::write(dir.join(SOURCE_TEXT_FILE), b"managed text source").unwrap();
+        fs::write(dir.join(STATE_FILE), b"saved reading state").unwrap();
+    }
+    storage.set_derived_cache_active("active-epub", true).unwrap();
+    let cache_names = [
+        "search-text.v2.s1.r1.json.zst",
+        "image-index.v1.s1.r1.json.zst",
+        "reading-metrics.v1.s1.json.zst",
+    ];
+    // Both ordinary clearing and the discard option must preserve content with no known unexported changes.
+    for discard in [false, true] {
+        for (id, _, _, _, _, _) in &cases {
+            for name in cache_names {
+                fs::write(storage.book_dir(id).join(name), b"derived index").unwrap();
+            }
+        }
+        let updated =
+            super::deletion::clear_book_caches_impl(&storage, &tasks, discard, Default::default(), |_, _| {}).unwrap();
+        assert!(updated.is_empty());
+        for (id, _, _, _, _, preserved) in &cases {
+            let dir = storage.book_dir(id);
+            let body = dir.join(UNPACKED_DIR).join("body.xhtml");
+            if *preserved {
+                assert_eq!(
+                    fs::read(&body).unwrap_or_else(|error| panic!("{id}, discard={discard}: {error}")),
+                    b"current working text"
+                );
+            } else {
+                assert!(!dir.join(UNPACKED_DIR).exists(), "disposable content retained: {id}");
+            }
+            for name in cache_names {
+                assert!(!dir.join(name).exists(), "derived cache retained: {id}/{name}");
+            }
+            assert_eq!(fs::read(dir.join(SOURCE_TEXT_FILE)).unwrap(), b"managed text source");
+            assert_eq!(fs::read(dir.join(STATE_FILE)).unwrap(), b"saved reading state");
+        }
+    }
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
+fn cache_clear_discards_only_closed_edits_without_requiring_active_sources() {
+    let nonce = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos();
+    let root = std::env::temp_dir().join(format!("flow-reader-cache-discard-{}-{nonce}", std::process::id()));
+    let books = ["closed", "active"].map(|id| {
+        let mut book = test_library_book_with_id(id, BookSourceFormat::Txt);
+        book.revision = 2;
+        book.source_path = root.join(format!("{id}-original.txt"));
+        book
+    });
+    let storage = test_storage_with_books(&root, books.to_vec());
+    let tasks = TaskService::default();
+    for book in &books {
+        let dir = storage.book_dir(&book.id);
+        fs::create_dir_all(dir.join(UNPACKED_DIR)).unwrap();
+        fs::write(dir.join(UNPACKED_DIR).join("body.xhtml"), b"edited working text").unwrap();
+        fs::write(dir.join(SOURCE_TEXT_FILE), b"edited text source").unwrap();
+    }
+    fs::write(&books[0].source_path, b"original text").unwrap();
+    // The active book's original has disappeared; its working copy is still in use.
+    storage.set_derived_cache_active("active", true).unwrap();
+    let updated =
+        super::deletion::clear_book_caches_impl(&storage, &tasks, true, Default::default(), |_, _| {}).unwrap();
+    assert_eq!(updated.len(), 1);
+    assert_eq!(updated[0].id, "closed");
+    assert_eq!(
+        fs::read(storage.book_dir("closed").join(SOURCE_TEXT_FILE)).unwrap(),
+        b"original text"
+    );
+    assert!(!storage.book_dir("closed").join(UNPACKED_DIR).exists());
+    let restored = storage.library_book("closed").unwrap();
+    assert!(!super::has_unexported_book_changes(&restored));
+    assert_eq!(restored.source_hash, hash_file(&books[0].source_path).unwrap());
+    assert_eq!(
+        fs::read(storage.book_dir("active").join(UNPACKED_DIR).join("body.xhtml")).unwrap(),
+        b"edited working text"
+    );
+    assert_eq!(
+        fs::read(storage.book_dir("active").join(SOURCE_TEXT_FILE)).unwrap(),
+        b"edited text source"
+    );
+    assert!(super::has_unexported_book_changes(
+        &storage.library_book("active").unwrap()
+    ));
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
 fn startup_cleanup_recovers_only_unambiguous_uncommitted_deletes() {
     let nonce = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos();
     let root = std::env::temp_dir().join(format!(
