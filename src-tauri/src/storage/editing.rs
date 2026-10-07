@@ -772,39 +772,58 @@ pub(super) fn replace_generated_txt_nav_heading(
     Ok(nav_xhtml.to_string())
 }
 
-pub(super) fn source_text_temp_path(path: &Path) -> PathBuf {
-    let file_name = path.file_name().and_then(|name| name.to_str()).unwrap_or("source.txt");
-    path.with_file_name(format!("{file_name}.tmp"))
-}
-
 pub(super) fn write_source_text_splice(path: &Path, offset: u64, old_len: u64, bytes: &[u8]) -> Result<(), String> {
-    let tmp = source_text_temp_path(path);
-    let mut input = BufReader::new(fs::File::open(path).map_err(|error| error.to_string())?);
-    let mut output = BufWriter::new(fs::File::create(&tmp).map_err(|error| error.to_string())?);
-
-    io::copy(&mut input.by_ref().take(offset), &mut output).map_err(|error| error.to_string())?;
-    output.write_all(bytes).map_err(|error| error.to_string())?;
-    input
-        .seek(SeekFrom::Start(offset.saturating_add(old_len)))
-        .map_err(|error| error.to_string())?;
-    io::copy(&mut input, &mut output).map_err(|error| error.to_string())?;
-    output.flush().map_err(|error| error.to_string())?;
-    drop(output);
-    drop(input);
-
-    fs::remove_file(path).map_err(|error| error.to_string())?;
-    fs::rename(&tmp, path).map_err(|error| error.to_string())
+    crate::atomic_file::write_file(path, crate::atomic_file::Durability::Buffered, |file| {
+        let mut input = BufReader::new(fs::File::open(path)?);
+        let source_len = input.get_ref().metadata()?.len();
+        let end = offset
+            .checked_add(old_len)
+            .filter(|end| *end <= source_len)
+            .ok_or_else(|| {
+                io::Error::new(
+                    io::ErrorKind::InvalidInput,
+                    "Text replacement range is outside the source",
+                )
+            })?;
+        let mut output = BufWriter::new(file);
+        if io::copy(&mut input.by_ref().take(offset), &mut output)? != offset {
+            return Err(io::Error::new(
+                io::ErrorKind::UnexpectedEof,
+                "Text source was truncated before replacement",
+            ));
+        }
+        output.write_all(bytes)?;
+        input.seek(SeekFrom::Start(end))?;
+        if io::copy(&mut input, &mut output)? != source_len - end {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidData,
+                "Text source length changed during replacement",
+            ));
+        }
+        output.flush()
+    })
 }
 
 pub(super) fn write_source_text_update(path: &Path, update: &SourceTextUpdate) -> Result<(), String> {
     match update {
         SourceTextUpdate::Patch { offset, bytes } => {
-            let mut file = fs::OpenOptions::new()
-                .write(true)
-                .open(path)
-                .map_err(|error| error.to_string())?;
-            file.seek(SeekFrom::Start(*offset)).map_err(|error| error.to_string())?;
-            file.write_all(bytes).map_err(|error| error.to_string())
+            // Equal-length edits remain local writes; they are not crash-atomic.
+            let result = (|| -> io::Result<()> {
+                let mut file = fs::OpenOptions::new().write(true).open(path)?;
+                let source_len = file.metadata()?.len();
+                offset
+                    .checked_add(bytes.len() as u64)
+                    .filter(|end| *end <= source_len)
+                    .ok_or_else(|| {
+                        io::Error::new(
+                            io::ErrorKind::InvalidInput,
+                            "Text replacement range is outside the source",
+                        )
+                    })?;
+                file.seek(SeekFrom::Start(*offset))?;
+                file.write_all(bytes)
+            })();
+            result.map_err(|error| format!("Cannot patch text in {}: {error}", path.display()))
         }
         SourceTextUpdate::Splice { offset, old_len, bytes } => write_source_text_splice(path, *offset, *old_len, bytes),
     }
@@ -918,9 +937,13 @@ pub(super) fn replace_book_text_impl(
         write_source_text_update(path, update)?;
     }
     if let Some((path, updated_nav)) = &nav_update {
-        fs::write(path, updated_nav).map_err(|error| error.to_string())?;
+        crate::atomic_file::write_file(path, crate::atomic_file::Durability::Buffered, |file| {
+            file.write_all(updated_nav.as_bytes())
+        })?;
     }
-    fs::write(&section_path, &updated_xhtml).map_err(|error| error.to_string())?;
+    crate::atomic_file::write_file(&section_path, crate::atomic_file::Durability::Buffered, |file| {
+        file.write_all(updated_xhtml.as_bytes())
+    })?;
 
     let book = {
         let mut state = storage

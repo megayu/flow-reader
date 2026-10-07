@@ -294,9 +294,6 @@ impl AppStorage {
         for name in [LIBRARY_FILE, SETTINGS_FILE, WINDOW_STATE_FILE] {
             crate::atomic_file::cleanup_interrupted_json_write(&root.join(name))?;
         }
-        for book in &library.books {
-            crate::atomic_file::cleanup_interrupted_json_write(&books_root(&root).join(&book.id).join(STATE_FILE))?;
-        }
         let storage = Self {
             inner: Arc::new(StorageInner {
                 root,

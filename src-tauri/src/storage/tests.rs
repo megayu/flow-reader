@@ -78,6 +78,70 @@ fn json_save_preserves_unrelated_staging_files() {
 }
 
 #[test]
+fn text_updates_validate_ranges_and_preserve_untouched_content() {
+    let root = std::env::temp_dir().join(format!(
+        "flow-reader-text-atomic-{}-{}",
+        std::process::id(),
+        SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos()
+    ));
+    fs::create_dir_all(&root).unwrap();
+    let path = root.join("source.txt");
+    let previous = root.join("previous.txt");
+    for (update, expected) in [
+        (
+            SourceTextUpdate::Patch {
+                offset: 2,
+                bytes: b"XY".to_vec(),
+            },
+            Some("abXYef"),
+        ),
+        (
+            SourceTextUpdate::Splice {
+                offset: 2,
+                old_len: 2,
+                bytes: b"XYZ".to_vec(),
+            },
+            Some("abXYZef"),
+        ),
+        (
+            SourceTextUpdate::Patch {
+                offset: 5,
+                bytes: b"XY".to_vec(),
+            },
+            None,
+        ),
+        (
+            SourceTextUpdate::Splice {
+                offset: 7,
+                old_len: 0,
+                bytes: b"X".to_vec(),
+            },
+            None,
+        ),
+        (
+            SourceTextUpdate::Splice {
+                offset: 1,
+                old_len: u64::MAX,
+                bytes: b"X".to_vec(),
+            },
+            None,
+        ),
+    ] {
+        fs::write(&path, b"abcdef").unwrap();
+        fs::hard_link(&path, &previous).unwrap();
+        let result = write_source_text_update(&path, &update);
+        assert_eq!(result.is_ok(), expected.is_some(), "{result:?}");
+        assert_eq!(fs::read_to_string(&path).unwrap(), expected.unwrap_or("abcdef"));
+        if expected.is_none() || matches!(update, SourceTextUpdate::Splice { .. }) {
+            assert_eq!(fs::read(&previous).unwrap(), b"abcdef");
+        }
+        fs::remove_file(&previous).unwrap();
+        assert_eq!(fs::read_dir(&root).unwrap().count(), 1);
+    }
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
 fn settings_update_honors_explicit_flush_policy() {
     let root = std::env::temp_dir().join(format!(
         "flow-reader-settings-flush-test-{}-{}",

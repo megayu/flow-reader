@@ -65,11 +65,27 @@ pub(crate) fn cleanup_interrupted_json_write(path: &Path) -> Result<(), String> 
 
 /// Publishes a complete JSON file without moving or deleting the old destination first.
 pub(crate) fn write_json<T: Serialize>(path: &Path, value: &T, durability: Durability) -> Result<(), String> {
+    let data = serde_json::to_vec_pretty(value)
+        .map_err(|error| format!("Cannot serialize JSON for {}: {error}", path.display()))?;
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent)
+            .map_err(|error| format!("Cannot create parent directory for {}: {error}", path.display()))?;
+    }
+    write_file(path, durability, |file| file.write_all(&data))
+}
+
+/// The callback must flush its buffers and close source handles before returning.
+/// Only a successful callback can publish the staged file.
+/// The destination directory must already exist.
+pub(crate) fn write_file(
+    path: &Path,
+    durability: Durability,
+    write: impl FnOnce(&mut fs::File) -> io::Result<()>,
+) -> Result<(), String> {
     static NEXT_TEMP: AtomicU64 = AtomicU64::new(0);
 
     let context =
         |stage: &str, error: &dyn std::fmt::Display| format!("Cannot {stage} for {}: {error}", path.display());
-    let data = serde_json::to_vec_pretty(value).map_err(|error| context("serialize JSON", &error))?;
     let parent = path
         .parent()
         .filter(|parent| !parent.as_os_str().is_empty())
@@ -77,7 +93,6 @@ pub(crate) fn write_json<T: Serialize>(path: &Path, value: &T, durability: Durab
     let name = path
         .file_name()
         .ok_or_else(|| format!("Missing file name: {}", path.display()))?;
-    fs::create_dir_all(parent).map_err(|error| context("create parent directory", &error))?;
 
     let mut staged = None;
     for _ in 0..32 {
@@ -100,8 +115,7 @@ pub(crate) fn write_json<T: Serialize>(path: &Path, value: &T, durability: Durab
     }
     let (temp, mut file) = staged.ok_or_else(|| context("create temporary file", &"name collisions"))?;
     let result = (|| {
-        file.write_all(&data)
-            .map_err(|error| context("write temporary file", &error))?;
+        write(&mut file).map_err(|error| context("write temporary file", &error))?;
         if matches!(durability, Durability::Synced) {
             file.sync_all()
                 .map_err(|error| context("sync temporary file", &error))?;
