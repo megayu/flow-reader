@@ -7,6 +7,7 @@ import { createTestBook } from '../support/book-fixtures'
 import { epubFixturePackageUrl, installEpubFixtureRoutes } from '../support/epub-fixture'
 import { msg } from '../support/i18n'
 import { selectReaderTextAndOpenMenu } from '../support/reader-selection'
+import { readAllBookTabStates, readFocusedTabState } from '../support/reader-state'
 import { getDictionaryMockState, installTauriMock } from '../support/tauri-mock'
 
 const longPackageUrl = '/test-assets/long/OPS/package.opf'
@@ -27,21 +28,6 @@ const dictionaryLayoutHtml = `<!doctype html><html><body>
     <ol class="xxjs-list"><li class="xxjs-item"><span class="xxjs-item__def">用于浮层布局测试的合成释义。</span></li></ol>
   </section>
 </body></html>`
-
-interface BookTabState {
-  id: string
-  rendered: boolean
-  turning: boolean
-  bookCfi?: string
-  currentTarget?: unknown
-  renditionStartCfi?: string
-  rejectedLocationEventCount: number
-  startCfi?: string
-  endCfi?: string
-  startIndex?: number
-  endIndex?: number
-  visibleSectionIndexes: number[]
-}
 
 interface BookTabRuntimeCounters {
   id: string
@@ -907,31 +893,6 @@ async function ensureTocSidebarVisibility(page: Page, visible: boolean, options:
   })
 }
 
-async function readFocusedTabState(page: Page) {
-  return page.evaluate(() => {
-    const tab = (window as any).reader.focusedBookTab
-    const location = tab?.paginationSnapshot?.location
-
-    return {
-      tabId: tab?.id,
-      tabTitle: tab?.title,
-      atEnd: !!location?.atEnd,
-      footerPercentage: tab?.paginationSnapshot?.percentage,
-      header: tab?.paginationSnapshot?.headerPath?.map((item: { label?: string }) => item.label ?? '').join(' '),
-      bookCfi: tab?.book?.cfi,
-      currentTarget: tab?.getCurrentDisplayTarget?.(),
-      renditionStartCfi: tab?.rendition?.location?.start?.cfi,
-      renditionEndCfi: tab?.rendition?.location?.end?.cfi,
-      rejectedLocationEventCount: tab?.rejectedLocationEventCount ?? 0,
-      startCfi: location?.start?.cfi,
-      endCfi: location?.end?.cfi,
-      startIndex: location?.start?.index,
-      endIndex: location?.end?.index,
-      visibleSectionIndexes: [...(tab?.visibleSectionIndexes ?? [])],
-    }
-  })
-}
-
 async function readFocusedRenderSignature(page: Page) {
   const layout = await readReaderLayout(page)
   const state = await readFocusedTabState(page)
@@ -1014,29 +975,6 @@ async function setLongBookAtSectionFinalSpread(page: Page, sectionIndex: number)
 
 async function expectFocusedTabId(page: Page, tabId: string) {
   await expect.poll(async () => (await readFocusedTabState(page)).tabId).toBe(tabId)
-}
-
-async function readAllBookTabStates(page: Page): Promise<BookTabState[]> {
-  return page.evaluate(() => {
-    return (window as any).reader.tabs.map((tab: any) => {
-      const location = tab?.paginationSnapshot?.location
-
-      return {
-        id: tab.id,
-        rendered: tab.rendered,
-        turning: tab.turning,
-        bookCfi: tab.book?.cfi,
-        currentTarget: tab.getCurrentDisplayTarget?.(),
-        renditionStartCfi: tab.rendition?.location?.start?.cfi,
-        rejectedLocationEventCount: tab.rejectedLocationEventCount ?? 0,
-        startCfi: location?.start?.cfi,
-        endCfi: location?.end?.cfi,
-        startIndex: location?.start?.index,
-        endIndex: location?.end?.index,
-        visibleSectionIndexes: [...(tab?.visibleSectionIndexes ?? [])],
-      }
-    })
-  })
 }
 
 async function advanceFocusedTabPages(page: Page, count: number) {

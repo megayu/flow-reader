@@ -4,6 +4,7 @@ import { expect, test } from '@playwright/test'
 
 import type { BookRecord } from '../../src/storage'
 import { createTestBook } from '../support/book-fixtures'
+import { readAllBookTabStates } from '../support/reader-state'
 import { getBookImportOperations, installTauriMock } from '../support/tauri-mock'
 
 const pendingEpubPath = path.join('temporary', 'requested.epub')
@@ -35,7 +36,7 @@ test('cold native EPUB request suppresses startup restore even when opening fail
   await page.goto('/')
   await page.waitForTimeout(1000)
 
-  expect(await page.evaluate(() => (window as any).reader.tabs.map((tab: any) => tab.book.id))).toEqual([])
+  expect((await readAllBookTabStates(page)).map((tab) => tab.bookId)).toEqual([])
 })
 
 test('native file setup failure does not block startup completion', async ({ page }) => {
@@ -64,9 +65,7 @@ test('cold native EPUB open opens only the requested book', async ({ page }) => 
 
   await page.goto('/')
 
-  await expect
-    .poll(() => page.evaluate(() => (window as any).reader.tabs.map((tab: any) => tab.book.id)))
-    .toEqual([requested.id])
+  await expect.poll(async () => (await readAllBookTabStates(page)).map((tab) => tab.bookId)).toEqual([requested.id])
   await expect(page.getByTestId('native-startup-surface')).toBeVisible()
   await expect(page.locator('[data-flow-reader-tab-index]')).toHaveCount(1)
   await page.evaluate(() => {
