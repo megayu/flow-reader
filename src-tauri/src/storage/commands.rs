@@ -500,18 +500,28 @@ pub fn get_book(storage: State<'_, AppStorage>, id: String) -> Result<Option<Boo
 }
 
 pub(super) fn get_book_impl(storage: &AppStorage, id: String) -> Result<Option<BookRecord>, String> {
-    let book = {
-        let state = storage
-            .inner
-            .state
-            .lock()
-            .map_err(|_| "storage state lock poisoned".to_string())?;
-        let Some(book) = state.library.books.iter().find(|book| book.id == id) else {
-            return Ok(None);
-        };
-        book.clone()
+    // Checkpoints use the same lock: do not publish a summary read before a newer write.
+    let mut state = storage
+        .inner
+        .state
+        .lock()
+        .map_err(|_| "storage state lock poisoned".to_string())?;
+    let Some(book) = state.library.books.iter_mut().find(|book| book.id == id) else {
+        return Ok(None);
     };
-    storage.compose_book(&book).map(Some)
+    let record = storage.compose_book(book)?;
+    if book.cfi != record.cfi
+        || book.percentage != record.percentage
+        || book.updated_at != record.updated_at
+        || book.last_read_at != record.last_read_at
+    {
+        book.cfi = record.cfi.clone();
+        book.percentage = record.percentage;
+        book.updated_at = record.updated_at;
+        book.last_read_at = record.last_read_at;
+        storage.mark_library_dirty();
+    }
+    Ok(Some(record))
 }
 
 #[tauri::command(async)]

@@ -384,6 +384,7 @@ fn external_promotion_state() -> BookState {
         definitions: vec!["term".to_string()],
         annotations: vec![json!({"text": "note"})],
         configuration: Some(json!({"theme": "sepia", "spread": {"page": 2}})),
+        ..Default::default()
     }
 }
 
@@ -2603,6 +2604,135 @@ fn failed_flush_keeps_library_dirty_for_retry() {
     assert!(path.is_file());
 
     let _ = fs::remove_dir_all(root);
+}
+
+#[test]
+fn book_read_repairs_summary_from_committed_state_after_failed_library_flush() {
+    let root = std::env::temp_dir().join(format!(
+        "flow-reader-summary-repair-{}-{}",
+        std::process::id(),
+        SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos()
+    ));
+    let mut book = test_library_book_with_id("reading-book", BookSourceFormat::Epub);
+    book.cfi = Some("old-position".into());
+    book.percentage = Some(0.2);
+    book.updated_at = Some(50);
+    book.last_read_at = Some(60);
+    let storage = test_storage_with_book(&root, book);
+    storage.mark_library_dirty();
+    storage.flush_content_dirty().unwrap();
+    let library_file = library_path(&root).unwrap();
+    let old_library = fs::read(&library_file).unwrap();
+    fs::remove_file(&library_file).unwrap();
+    fs::create_dir(&library_file).unwrap();
+
+    assert!(
+        persist_book_states_and_flush(
+            &storage,
+            vec![BookStateCheckpointInput {
+                id: "reading-book".into(),
+                state: BookStateCheckpoint {
+                    cfi: Some("saved-position".into()),
+                    percentage: Some(0.8),
+                    definitions: vec![],
+                    annotations: vec![json!({"id": "saved-note"})],
+                    configuration: None,
+                },
+                state_updated_at: Some(100),
+                last_read_at: Some(200),
+            }]
+        )
+        .is_err()
+    );
+    fs::remove_dir(&library_file).unwrap();
+    fs::write(&library_file, old_library).unwrap();
+
+    let reloaded = test_storage_from_disk(&root);
+    let record = get_book_impl(&reloaded, "reading-book".into()).unwrap().unwrap();
+    assert_eq!(record.cfi.as_deref(), Some("saved-position"));
+    assert_eq!(record.percentage, Some(0.8));
+    assert_eq!(record.updated_at, Some(100));
+    assert_eq!(record.last_read_at, Some(200));
+    assert_eq!(record.annotations, vec![json!({"id": "saved-note"})]);
+    reloaded.flush_content_dirty().unwrap();
+    let repaired: Library = read_json_or_default(&library_file).unwrap();
+    assert_eq!(repaired.books[0].cfi, record.cfi);
+    assert_eq!(repaired.books[0].percentage, record.percentage);
+    assert_eq!(repaired.books[0].last_read_at, record.last_read_at);
+
+    // Legacy states have no timestamps; positions can move backwards or be cleared.
+    let state_file = reloaded.book_dir("reading-book").join(STATE_FILE);
+    for (cfi, percentage) in [(None, None), (Some("earlier-position"), Some(0.1))] {
+        fs::write(
+            &state_file,
+            serde_json::to_vec(&json!({
+                "version": BOOK_STATE_VERSION, "cfi": cfi, "percentage": percentage,
+            }))
+            .unwrap(),
+        )
+        .unwrap();
+        let record = get_book_impl(&reloaded, "reading-book".into()).unwrap().unwrap();
+        assert_eq!(record.cfi.as_deref(), cfi);
+        assert_eq!(record.percentage, percentage);
+        assert_eq!(record.updated_at, Some(100));
+        assert_eq!(record.last_read_at, Some(200));
+        assert_eq!(reloaded.stored_book("reading-book").unwrap().cfi, record.cfi);
+    }
+
+    // An absent or invalid file is not an authoritative empty reading state.
+    let before = reloaded.stored_book("reading-book").unwrap();
+    fs::write(&state_file, b"invalid json").unwrap();
+    assert!(get_book_impl(&reloaded, "reading-book".into()).is_err());
+    assert_eq!(
+        reloaded.stored_book("reading-book").unwrap().last_read_at,
+        before.last_read_at
+    );
+    fs::remove_file(&state_file).unwrap();
+    let record = get_book_impl(&reloaded, "reading-book".into()).unwrap().unwrap();
+    assert_eq!(record.cfi, before.cfi);
+    assert_eq!(record.percentage, before.percentage);
+    assert_eq!(record.last_read_at, before.last_read_at);
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
+fn partial_checkpoint_failure_keeps_committed_summaries_dirty() {
+    let root = std::env::temp_dir().join(format!(
+        "flow-reader-summary-partial-{}-{}",
+        std::process::id(),
+        SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos()
+    ));
+    let storage = test_storage_with_books(
+        &root,
+        vec![
+            test_library_book_with_id("first", BookSourceFormat::Epub),
+            test_library_book_with_id("second", BookSourceFormat::Epub),
+        ],
+    );
+    fs::create_dir_all(storage.book_dir("second").join(STATE_FILE)).unwrap();
+    let checkpoints = ["first", "second"].map(|id| BookStateCheckpointInput {
+        id: id.into(),
+        state: BookStateCheckpoint {
+            cfi: Some("saved-position".into()),
+            percentage: Some(0.6),
+            definitions: vec![],
+            annotations: vec![],
+            configuration: None,
+        },
+        state_updated_at: Some(100),
+        last_read_at: Some(200),
+    });
+    assert!(persist_book_states_and_flush(&storage, checkpoints.into()).is_err());
+    assert_eq!(
+        storage.stored_book("first").unwrap().cfi.as_deref(),
+        Some("saved-position")
+    );
+    assert_eq!(storage.stored_book("second").unwrap().cfi, None);
+    storage.flush_content_dirty().unwrap();
+    let saved: Library = read_json_or_default(&library_path(&root).unwrap()).unwrap();
+    assert_eq!(saved.books[0].cfi.as_deref(), Some("saved-position"));
+    assert_eq!(saved.books[1].cfi, None);
+    fs::remove_dir_all(root).unwrap();
 }
 
 #[test]

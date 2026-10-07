@@ -81,11 +81,16 @@ pub(super) fn apply_book_state_checkpoints(
         resolved.push(index);
     }
 
-    for checkpoint in &books {
+    for (checkpoint, index) in books.iter().zip(resolved) {
+        let book = &mut state.library.books[index];
+        let updated_at = book.updated_at.max(checkpoint.state_updated_at);
+        let last_read_at = book.last_read_at.max(checkpoint.last_read_at);
         storage.write_book_state(
             &checkpoint.id,
             &BookState {
                 version: BOOK_STATE_VERSION,
+                updated_at,
+                last_read_at,
                 cfi: checkpoint.state.cfi.clone(),
                 percentage: checkpoint.state.percentage,
                 definitions: checkpoint.state.definitions.clone(),
@@ -93,25 +98,12 @@ pub(super) fn apply_book_state_checkpoints(
                 configuration: checkpoint.state.configuration.clone(),
             },
         )?;
-    }
-
-    for (checkpoint, index) in books.iter().zip(resolved) {
-        let book = &mut state.library.books[index];
+        // Publish each summary only after its state commits. A later book may fail.
         book.cfi = checkpoint.state.cfi.clone();
         book.percentage = checkpoint.state.percentage;
-        merge_monotonic_timestamp(&mut book.updated_at, checkpoint.state_updated_at);
-        merge_monotonic_timestamp(&mut book.last_read_at, checkpoint.last_read_at);
+        book.updated_at = updated_at;
+        book.last_read_at = last_read_at;
+        storage.mark_library_dirty();
     }
-    drop(state);
-
-    storage.mark_library_dirty();
     Ok(())
-}
-
-fn merge_monotonic_timestamp(current: &mut Option<u64>, incoming: Option<u64>) {
-    if let Some(incoming) = incoming
-        && current.is_none_or(|current| incoming > current)
-    {
-        *current = Some(incoming);
-    }
 }

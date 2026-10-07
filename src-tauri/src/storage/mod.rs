@@ -535,14 +535,25 @@ impl AppStorage {
     }
 
     fn read_book_state(&self, id: &str) -> Result<BookState, String> {
-        let state = read_json_or_default::<BookState>(&self.book_dir(id).join(STATE_FILE))?;
+        Ok(self.read_existing_book_state(id)?.unwrap_or_default())
+    }
+
+    fn read_existing_book_state(&self, id: &str) -> Result<Option<BookState>, String> {
+        let path = self.book_dir(id).join(STATE_FILE);
+        let data = match fs::read(&path) {
+            Ok(data) => data,
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+            Err(error) => return Err(format!("Failed to read {}: {error}", path.display())),
+        };
+        let state: BookState =
+            serde_json::from_slice(&data).map_err(|error| format!("Failed to decode {}: {error}", path.display()))?;
         if state.version != BOOK_STATE_VERSION {
             return Err(format!(
                 "Unsupported book state version {}; current version is {BOOK_STATE_VERSION}",
                 state.version
             ));
         }
-        Ok(state)
+        Ok(Some(state))
     }
 
     fn write_book_state(&self, id: &str, state: &BookState) -> Result<(), String> {
@@ -550,13 +561,17 @@ impl AppStorage {
     }
 
     fn compose_book(&self, book: &StoredBook) -> Result<BookRecord, String> {
-        let book_state = self.read_book_state(&book.id)?;
         let mut record = self.compose_book_summary(book);
+        let Some(book_state) = self.read_existing_book_state(&book.id)? else {
+            return Ok(record);
+        };
         record.definitions = book_state.definitions;
         record.annotations = book_state.annotations;
         record.cfi = book_state.cfi;
         record.percentage = book_state.percentage;
         record.configuration = book_state.configuration;
+        record.updated_at = record.updated_at.max(book_state.updated_at);
+        record.last_read_at = record.last_read_at.max(book_state.last_read_at);
         Ok(record)
     }
 

@@ -25,6 +25,7 @@ import type {
 
 type Listener = () => void
 type TableName = 'books' | 'bookImports' | 'covers' | 'pins' | 'recentBooks' | 'settings' | 'tags'
+const readingSummaryFields = ['cfi', 'percentage', 'updatedAt', 'lastReadAt'] as const
 
 interface BookImportCache {
   books: Map<string, BookRecord>
@@ -367,7 +368,31 @@ export const db = {
       return loadBooks()
     },
     async get(id: string): Promise<BookRecord | undefined> {
+      const cached = booksCache?.find((book) => book.id === id)
+      const previous = cached && readingSummaryFields.map((field) => cached[field])
       const book = await invoke('get_book', { id })
+      // The native read can repair a stale summary. Preserve unsaved local state
+      // and progress recorded in flight; never reinsert a deleted/replaced entry.
+      if (
+        book &&
+        cached &&
+        previous &&
+        booksCache?.includes(cached) &&
+        (book.lastReadAt ?? 0) >= (cached.lastReadAt ?? 0) &&
+        (book.updatedAt ?? 0) >= (cached.updatedAt ?? 0) &&
+        readingSummaryFields.every((field, index) => cached[field] === previous[index]) &&
+        readingSummaryFields.some((field) => cached[field] !== book[field])
+      ) {
+        beginBooksMutation()
+        Object.assign(cached, {
+          cfi: book.cfi,
+          percentage: book.percentage,
+          updatedAt: book.updatedAt,
+          lastReadAt: book.lastReadAt,
+        })
+        booksCache = [...booksCache]
+        notify('books')
+      }
       return book ?? undefined
     },
     peek(id: string) {

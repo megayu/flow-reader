@@ -352,6 +352,12 @@ pub enum BookReaderSourceMode {
 #[serde(rename_all = "camelCase")]
 pub(super) struct BookState {
     pub(super) version: u32,
+    // The reading fields in library.json can be rebuilt from this state.
+    // Absent timestamps in older states keep the library's known timestamps.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(super) updated_at: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(super) last_read_at: Option<u64>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub(super) cfi: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -368,6 +374,8 @@ impl Default for BookState {
     fn default() -> Self {
         Self {
             version: BOOK_STATE_VERSION,
+            updated_at: None,
+            last_read_at: None,
             cfi: None,
             percentage: None,
             definitions: Vec::new(),
