@@ -3911,6 +3911,157 @@ fn txt_replacement_streams_to_target_heading_when_previous_generated_heading_has
 }
 
 #[test]
+fn text_edit_succeeds_when_disposable_cache_refresh_fails() {
+    let root = std::env::temp_dir().join(format!(
+        "flow-reader-edit-cache-failure-{}-{}",
+        std::process::id(),
+        SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos()
+    ));
+    let book = test_library_book(BookSourceFormat::Epub);
+    let storage = test_storage_with_book(&root, book.clone());
+    let book_dir = storage.book_dir("book");
+    write_minimal_epub_file(&book_dir.join(BOOK_FILE), "Cache failure", "original");
+    let tasks = TaskService::default();
+    get_book_reader_source_impl(&storage, &tasks, &book).unwrap();
+    load_or_build_search_text_cache(&storage, &tasks, &book).unwrap();
+    let failing_storage = storage.clone();
+    thread::spawn(move || {
+        let _guard = failing_storage.inner.image_index_caches.lock().unwrap();
+        panic!("simulate an unavailable derived cache");
+    })
+    .join()
+    .expect_err("cache lock is poisoned");
+
+    let saved = replace_book_text_impl(
+        &storage,
+        "book".to_string(),
+        BookTextReplaceTarget {
+            section_href: "chapter.xhtml".to_string(),
+            text_node_index: 0,
+            text_node_text: "original".to_string(),
+            start_offset: 0,
+            end_offset: 8,
+            paragraph_index: None,
+        },
+        "original".to_string(),
+        "corrected".to_string(),
+    )
+    .expect("cache failure must not reject a committed edit");
+    assert!(saved.changed);
+    assert_eq!(saved.book.revision, book.revision + 1);
+    assert!(
+        fs::read_to_string(book_dir.join(UNPACKED_DIR).join("OEBPS/chapter.xhtml"))
+            .unwrap()
+            .contains("<p>corrected</p>")
+    );
+    let persisted = test_storage_from_disk(&root).library_book("book").unwrap();
+    assert_eq!(persisted.revision, saved.book.revision);
+    assert!(storage.derived_cache_is_active("book").unwrap());
+
+    storage.inner.image_index_caches.clear_poison();
+    let cache = load_or_build_search_text_cache(&storage, &tasks, &persisted).unwrap();
+    assert!(!search_text_in_cache(&cache, "corrected", None).is_empty());
+    assert!(search_text_in_cache(&cache, "original", None).is_empty());
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
+fn failed_text_edit_restores_content_and_revision_before_retry() {
+    for replacement in ["新名", "新的名称"] {
+        let root = std::env::temp_dir().join(format!(
+            "flow-reader-edit-rollback-{}-{}",
+            std::process::id(),
+            SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos()
+        ));
+        let mut book = test_library_book(BookSourceFormat::Txt);
+        book.metadata = json!({ "sourceEncodingId": "utf-8" });
+        let original_book = book.clone();
+        let storage = test_storage_with_book(&root, book);
+        let book_dir = storage.book_dir("book");
+        let oebps = book_dir.join(UNPACKED_DIR).join("OEBPS");
+        fs::create_dir_all(oebps.join("Text")).unwrap();
+        fs::create_dir_all(book_dir.join(UNPACKED_DIR).join("META-INF")).unwrap();
+        fs::write(
+            book_dir.join(UNPACKED_DIR).join("META-INF/container.xml"),
+            r#"<container><rootfiles><rootfile full-path="OEBPS/content.opf"/></rootfiles></container>"#,
+        )
+        .unwrap();
+        fs::write(oebps.join("content.opf"), "<package/>").unwrap();
+        let source_path = book_dir.join(SOURCE_TEXT_FILE);
+        let nav_path = oebps.join("nav.xhtml");
+        let section_path = oebps.join("Text/part0001.xhtml");
+        let source = "第一章 名称\r\n正文。\r\n";
+        let nav =
+            r#"<html><body><nav><ol><li><a href="Text/part0001.xhtml">第一章 名称</a></li></ol></nav></body></html>"#;
+        let xhtml = r#"<html><head><title>第一章 名称</title></head><body><h2 class="flow-txt-chapter">第一章 名称</h2><div class="flow-txt-body" data-flow-body-text="true"><p>正文。</p></div></body></html>"#;
+        fs::write(&source_path, source).unwrap();
+        fs::write(&nav_path, nav).unwrap();
+        fs::write(&section_path, xhtml).unwrap();
+        storage.mark_library_dirty();
+        storage.flush_content_dirty().unwrap();
+        let library = library_path(&root).unwrap();
+        let saved_library = root.join("saved-library.json");
+        fs::rename(&library, &saved_library).unwrap();
+        fs::create_dir(&library).unwrap();
+        let target = BookTextReplaceTarget {
+            section_href: "Text/part0001.xhtml".to_string(),
+            text_node_index: 99,
+            text_node_text: "第一章 名称".to_string(),
+            start_offset: 4,
+            end_offset: 6,
+            paragraph_index: None,
+        };
+        let result = replace_book_text_impl(
+            &storage,
+            "book".to_string(),
+            target.clone(),
+            "名称".to_string(),
+            replacement.to_string(),
+        );
+        assert!(result.is_err(), "blocked library write must reject the edit");
+        assert_eq!(fs::read_to_string(&source_path).unwrap(), source);
+        assert_eq!(fs::read_to_string(&nav_path).unwrap(), nav);
+        assert_eq!(fs::read_to_string(&section_path).unwrap(), xhtml);
+        let restored = storage.library_book("book").unwrap();
+        assert_eq!(restored.revision, original_book.revision);
+        assert_eq!(restored.content_edited_at, original_book.content_edited_at);
+        assert_eq!(restored.updated_at, original_book.updated_at);
+
+        fs::remove_dir(&library).unwrap();
+        fs::rename(&saved_library, &library).unwrap();
+        storage.flush_content_dirty().unwrap();
+        assert_eq!(
+            test_storage_from_disk(&root).library_book("book").unwrap().revision,
+            original_book.revision
+        );
+        let saved = replace_book_text_impl(
+            &storage,
+            "book".to_string(),
+            target,
+            "名称".to_string(),
+            replacement.to_string(),
+        )
+        .unwrap();
+        assert!(saved.changed);
+        assert_eq!(saved.book.revision, original_book.revision + 1);
+        assert_eq!(
+            fs::read_to_string(&source_path).unwrap(),
+            source.replace("名称", replacement)
+        );
+        assert_eq!(fs::read_to_string(&nav_path).unwrap(), nav.replace("名称", replacement));
+        assert_eq!(
+            fs::read_to_string(&section_path).unwrap(),
+            xhtml.replace("名称", replacement)
+        );
+        assert_eq!(
+            test_storage_from_disk(&root).library_book("book").unwrap().revision,
+            saved.book.revision
+        );
+        fs::remove_dir_all(root).unwrap();
+    }
+}
+
+#[test]
 fn txt_replacement_updates_generated_heading_and_source_title_line() {
     let nonce = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos();
     let root = std::env::temp_dir().join(format!(

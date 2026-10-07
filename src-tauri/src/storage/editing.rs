@@ -804,29 +804,101 @@ pub(super) fn write_source_text_splice(path: &Path, offset: u64, old_len: u64, b
     })
 }
 
-pub(super) fn write_source_text_update(path: &Path, update: &SourceTextUpdate) -> Result<(), String> {
+// Returns the inverse edit, retaining only the replaced bytes rather than a copy of the TXT.
+pub(super) fn write_source_text_update(path: &Path, update: &SourceTextUpdate) -> Result<SourceTextUpdate, String> {
+    let (offset, old_len) = match update {
+        SourceTextUpdate::Patch { offset, bytes } => (*offset, bytes.len() as u64),
+        SourceTextUpdate::Splice { offset, old_len, .. } => (*offset, *old_len),
+    };
+    let (mut file, original) = (|| -> io::Result<_> {
+        let mut file = fs::OpenOptions::new()
+            .read(true)
+            .write(matches!(update, SourceTextUpdate::Patch { .. }))
+            .open(path)?;
+        let source_len = file.metadata()?.len();
+        offset
+            .checked_add(old_len)
+            .filter(|end| *end <= source_len)
+            .ok_or_else(|| {
+                io::Error::new(
+                    io::ErrorKind::InvalidInput,
+                    "Text replacement range is outside the source",
+                )
+            })?;
+        let len = usize::try_from(old_len)
+            .map_err(|_| io::Error::new(io::ErrorKind::InvalidInput, "Text replacement range is too large"))?;
+        let mut original = vec![0; len];
+        file.seek(SeekFrom::Start(offset))?;
+        file.read_exact(&mut original)?;
+        Ok((file, original))
+    })()
+    .map_err(|error| format!("Cannot prepare text update in {}: {error}", path.display()))?;
     match update {
         SourceTextUpdate::Patch { offset, bytes } => {
             // Equal-length edits remain local writes; they are not crash-atomic.
-            let result = (|| -> io::Result<()> {
-                let mut file = fs::OpenOptions::new().write(true).open(path)?;
-                let source_len = file.metadata()?.len();
-                offset
-                    .checked_add(bytes.len() as u64)
-                    .filter(|end| *end <= source_len)
-                    .ok_or_else(|| {
-                        io::Error::new(
-                            io::ErrorKind::InvalidInput,
-                            "Text replacement range is outside the source",
-                        )
-                    })?;
-                file.seek(SeekFrom::Start(*offset))?;
-                file.write_all(bytes)
-            })();
-            result.map_err(|error| format!("Cannot patch text in {}: {error}", path.display()))
+            file.seek(SeekFrom::Start(*offset))
+                .map_err(|error| format!("Cannot seek text in {}: {error}", path.display()))?;
+            if let Err(error) = file.write_all(bytes) {
+                let rollback = file
+                    .seek(SeekFrom::Start(*offset))
+                    .and_then(|_| file.write_all(&original));
+                let detail = rollback
+                    .err()
+                    .map(|error| format!("; rollback failed: {error}"))
+                    .unwrap_or_default();
+                return Err(format!("Cannot patch text in {}: {error}{detail}", path.display()));
+            }
+            Ok(SourceTextUpdate::Patch {
+                offset: *offset,
+                bytes: original,
+            })
         }
-        SourceTextUpdate::Splice { offset, old_len, bytes } => write_source_text_splice(path, *offset, *old_len, bytes),
+        SourceTextUpdate::Splice { offset, old_len, bytes } => {
+            drop(file);
+            write_source_text_splice(path, *offset, *old_len, bytes)?;
+            Ok(SourceTextUpdate::Splice {
+                offset: *offset,
+                old_len: bytes.len() as u64,
+                bytes: original,
+            })
+        }
     }
+}
+
+fn commit_book_text_edit(storage: &AppStorage, id: &str) -> Result<(StoredBook, BookRecord), String> {
+    // Publish the new revision only after the library write succeeds. The flush/state locks
+    // prevent concurrent checkpoints from persisting a provisional revision or losing state.
+    let _flush_guard = storage
+        .inner
+        .flush_lock
+        .lock()
+        .map_err(|_| "storage flush lock poisoned".to_string())?;
+    let mut state = storage
+        .inner
+        .state
+        .lock()
+        .map_err(|_| "storage state lock poisoned".to_string())?;
+    let mut library = clone_library(&state.library);
+    let book = library
+        .books
+        .iter_mut()
+        .find(|book| book.id == id && book.scope == BookScope::Library)
+        .ok_or_else(|| "Book not found".to_string())?;
+    let now = now_ms();
+    mark_book_content_updated_fields(book, now)?;
+    book.updated_at = Some(now);
+    let book = book.clone();
+    // Resolve fallible response data before the commit point as well.
+    let record = storage.compose_book(&book)?;
+    let mut dirty = storage
+        .inner
+        .dirty
+        .lock()
+        .map_err(|_| "storage dirty lock poisoned".to_string())?;
+    write_json(&library_path(storage.root())?, &library)?;
+    state.library = library;
+    dirty.library = false;
+    Ok((book, record))
 }
 
 pub(super) fn mark_library_book_content_updated(storage: &AppStorage, id: &str) -> Result<Option<StoredBook>, String> {
@@ -894,6 +966,7 @@ pub(super) fn replace_book_text_impl(
             changed: false,
         });
     }
+    next_book_revision(&initial_book)?;
 
     let source_update =
         if source_format == BookSourceFormat::Txt && initial_book.source_storage == SourceStorage::Managed {
@@ -925,7 +998,7 @@ pub(super) fn replace_book_text_impl(
             let nav_xhtml = fs::read_to_string(&nav_path).map_err(|error| error.to_string())?;
             let updated_nav =
                 replace_generated_txt_nav_heading(&nav_xhtml, &target.section_href, old_heading, new_heading)?;
-            (updated_nav != nav_xhtml).then_some((nav_path, updated_nav))
+            (updated_nav != nav_xhtml).then_some((nav_path, nav_xhtml, updated_nav))
         } else {
             None
         }
@@ -933,45 +1006,63 @@ pub(super) fn replace_book_text_impl(
         None
     };
 
-    if let Some((path, update)) = &source_update {
-        write_source_text_update(path, update)?;
-    }
-    if let Some((path, updated_nav)) = &nav_update {
+    let write_xhtml = |path: &Path, text: &str| {
         crate::atomic_file::write_file(path, crate::atomic_file::Durability::Buffered, |file| {
-            file.write_all(updated_nav.as_bytes())
-        })?;
-    }
-    crate::atomic_file::write_file(&section_path, crate::atomic_file::Durability::Buffered, |file| {
-        file.write_all(updated_xhtml.as_bytes())
-    })?;
-
-    let book = {
-        let mut state = storage
-            .inner
-            .state
-            .lock()
-            .map_err(|_| "storage state lock poisoned".to_string())?;
-        let Some(book) = state
-            .library
-            .books
-            .iter_mut()
-            .find(|book| book.id == id && book.scope == BookScope::Library)
-        else {
-            return Err("Book not found".to_string());
-        };
-        let now = now_ms();
-        book.source_format = source_format;
-        mark_book_content_updated_fields(book, now)?;
-        book.updated_at = Some(now);
-        book.clone()
+            file.write_all(text.as_bytes())
+        })
     };
-
-    storage.update_derived_caches_after_edit(&initial_book, &book, &target.section_href, &updated_xhtml)?;
-    storage.mark_library_dirty();
-    storage.flush_content_dirty()?;
+    let mut source_undo = None;
+    let mut nav_written = false;
+    let mut section_written = false;
+    let result = (|| {
+        if let Some((path, update)) = &source_update {
+            source_undo = Some((path, write_source_text_update(path, update)?));
+        }
+        if let Some((path, _, updated_nav)) = &nav_update {
+            write_xhtml(path, updated_nav)?;
+            nav_written = true;
+        }
+        write_xhtml(&section_path, &updated_xhtml)?;
+        section_written = true;
+        commit_book_text_edit(storage, &id)
+    })();
+    let (book, record) = match result {
+        Ok(committed) => committed,
+        Err(error) => {
+            // Attempt every inverse in reverse order, even if one restoration fails.
+            let mut rollback_errors = Vec::new();
+            if section_written && let Err(error) = write_xhtml(&section_path, &xhtml) {
+                rollback_errors.push(error);
+            }
+            if nav_written
+                && let Some((path, original, _)) = &nav_update
+                && let Err(error) = write_xhtml(path, original)
+            {
+                rollback_errors.push(error);
+            }
+            if let Some((path, undo)) = source_undo
+                && let Err(error) = write_source_text_update(path, &undo)
+            {
+                rollback_errors.push(error);
+            }
+            let detail = if rollback_errors.is_empty() {
+                String::new()
+            } else {
+                format!("; rollback failed: {}", rollback_errors.join("; "))
+            };
+            return Err(format!("Cannot save text edit for book '{id}': {error}{detail}"));
+        }
+    };
+    // Derived indexes are disposable: an update failure cannot undo a committed edit.
+    if let Err(error) =
+        storage.update_derived_caches_after_edit(&initial_book, &book, &target.section_href, &updated_xhtml)
+    {
+        storage.remove_derived_memory_cache_data(&id);
+        eprintln!("Failed to update caches after committed text edit for book '{id}': {error}");
+    }
 
     Ok(BookTextReplaceResult {
-        book: storage.compose_book(&book)?,
+        book: record,
         section_href: target.section_href,
         changed: true,
     })
