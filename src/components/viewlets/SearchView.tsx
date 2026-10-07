@@ -162,21 +162,27 @@ const ResultList = forwardRef<ResultListHandle, ResultListProps>(({ results, key
     rows.flatMap((row) => (row.result?.offset === undefined ? [] : [[row.sectionIndex, row.result.offset]])),
   )
   const bookId = reader.focusedBookTab!.book.id
-  const [loaded, setLoaded] = useState({ positions: '', excerpts: [] as string[] })
+  const [loaded, setLoaded] = useState({ positions: '', excerpts: [] as string[], failed: false })
+  const [retry, setRetry] = useState(0)
   useEffect(() => {
     let active = true
-    setLoaded({ positions, excerpts: [] })
+    setLoaded({ positions, excerpts: [], failed: false })
     const requested = JSON.parse(positions) as [number, number][]
     if (!requested.length) return
     void loadBookSearchExcerpts(bookId, keyword, requested)
       .then((excerpts) => {
-        if (active) setLoaded({ positions, excerpts })
+        if (active) setLoaded({ positions, excerpts, failed: false })
       })
-      .catch(console.error)
+      .catch((error) => {
+        if (active) {
+          console.error(error)
+          setLoaded({ positions, excerpts: [], failed: true })
+        }
+      })
     return () => {
       active = false
     }
-  }, [bookId, keyword, positions])
+  }, [bookId, keyword, positions, retry])
 
   const sectionCount = results.length
   const resultCount = results.reduce((a, r) => (r.offsets?.length ?? r.subitems?.length ?? 0) + a, 0)
@@ -227,12 +233,15 @@ const ResultList = forwardRef<ResultListHandle, ResultListProps>(({ results, key
         <div className="relative" style={{ height: totalSize }}>
           {items.map(({ index, start, size }, visibleIndex) => {
             const row = rows[visibleIndex]
+            const excerptFailed = row?.result?.offset !== undefined && loaded.positions === positions && loaded.failed
             const result =
               row?.result?.offset === undefined
                 ? row?.result
                 : {
                     ...row.result,
-                    excerpt: (loaded.positions === positions ? loaded.excerpts[row.excerptIndex] : undefined) ?? '…',
+                    excerpt: excerptFailed
+                      ? t('search.failed')
+                      : ((loaded.positions === positions ? loaded.excerpts[row.excerptIndex] : undefined) ?? '…'),
                   }
             return (
               <div
@@ -250,6 +259,7 @@ const ResultList = forwardRef<ResultListHandle, ResultListProps>(({ results, key
                   href={row?.href}
                   keyword={keyword}
                   active={result?.id === activeResultID}
+                  onRetry={excerptFailed ? () => setRetry((current) => current + 1) : undefined}
                 />
               </div>
             )
@@ -268,8 +278,9 @@ interface ResultRowProps {
   href?: string
   keyword: string
   active: boolean
+  onRetry?: () => void
 }
-const ResultRow: React.FC<ResultRowProps> = ({ result, depth, sectionIndex, href, keyword, active }) => {
+const ResultRow: React.FC<ResultRowProps> = ({ result, depth, sectionIndex, href, keyword, active, onRetry }) => {
   if (!result) return null
   const { expanded, subitems, offsets, id } = result
   let { excerpt, description } = result
@@ -304,13 +315,28 @@ const ResultRow: React.FC<ResultRowProps> = ({ result, depth, sectionIndex, href
       })}
       toggle={() => tab?.toggleResult(id)}
     >
-      {!isGroup && (
-        <Highlighter
-          highlightClassName="match-highlight"
-          searchWords={[keyword]}
-          textToHighlight={excerpt}
-          autoEscape
-        />
+      {onRetry ? (
+        <span className="text-destructive inline-flex max-w-full items-center gap-1 align-middle">
+          <span className="truncate">{excerpt}</span>
+          <IconButton
+            Icon={RefreshCwIcon}
+            className="text-muted-foreground hover:text-foreground size-6 shrink-0"
+            onPointerDown={(event) => event.stopPropagation()}
+            onClick={(event) => {
+              event.stopPropagation()
+              onRetry()
+            }}
+          />
+        </span>
+      ) : (
+        !isGroup && (
+          <Highlighter
+            highlightClassName="match-highlight"
+            searchWords={[keyword]}
+            textToHighlight={excerpt}
+            autoEscape
+          />
+        )
       )}
     </Row>
   )

@@ -3270,6 +3270,37 @@ verticalBookTest('distinguishes a failed book search from no matches and retries
   await expect(retry).toBeHidden()
 })
 
+verticalBookTest('retries failed search excerpts without navigating the reader', async ({ page }) => {
+  await openVerticalFixtureBook(page)
+  const before = await readVerticalReadingState(page)
+  await page.evaluate(() => {
+    const internals = (window as any).__TAURI_INTERNALS__
+    const invoke = internals.invoke
+    let failed = false
+    internals.invoke = (command: string, args: any) => {
+      if (command === 'search_book_text' && args.query.positions && !failed) {
+        failed = true
+        return Promise.reject(new Error('Synthetic excerpt read failure'))
+      }
+      return invoke(command, args)
+    }
+  })
+  const sidebar = page.locator('.SideBar')
+  await page
+    .locator('.ActivityBar')
+    .getByRole('button', { name: msg('search.title'), exact: true })
+    .click()
+  await sidebar.getByRole('textbox', { name: msg('search.title'), exact: true }).fill('VERTICAL-CHAPTER-01-29')
+
+  const failure = sidebar.getByText(msg('search.failed'), { exact: true }).first()
+  await expect(failure).toBeVisible()
+  await failure.locator('..').getByRole('button').click()
+  await expect(listRow(sidebar, 'VERTICAL-CHAPTER-01-29')).toBeVisible()
+  await expect(failure).toBeHidden()
+  await expect(sidebar.locator('.list-row[aria-current="true"]')).toHaveCount(0)
+  expect(await readVerticalReadingState(page)).toEqual(before)
+})
+
 verticalBookTest('[vertical-rl] keeps a clicked sidebar search result active and visible', async ({ page }) => {
   await openVerticalFixtureBook(page)
   await page.locator('.ActivityBar button[aria-label="Search"]').click()
