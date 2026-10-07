@@ -130,8 +130,8 @@ pub(super) fn epub_entry_compression(relative: &str) -> CompressionMethod {
     }
 }
 
-pub(super) fn write_epub_file(
-    writer: &mut ZipWriter<BufWriter<fs::File>>,
+pub(super) fn write_epub_file<W: Write + Seek>(
+    writer: &mut ZipWriter<W>,
     relative: &str,
     path: &Path,
     deflate_level: Option<i64>,
@@ -206,42 +206,49 @@ pub(super) fn original_epub_file_count<R: Read + Seek>(archive: &mut ZipArchive<
     Ok(count)
 }
 
+fn write_export_file(
+    output_path: &Path,
+    write: impl FnOnce(&mut fs::File) -> Result<(), String>,
+) -> Result<(), String> {
+    if let Some(parent) = output_path.parent() {
+        fs::create_dir_all(parent).map_err(|error| error.to_string())?;
+    }
+    crate::atomic_file::write_file(output_path, crate::atomic_file::Durability::Buffered, |file| {
+        write(file).map_err(io::Error::other)
+    })
+}
+
 pub(super) fn write_epub_from_unpacked_dir(
     unpacked_dir: &Path,
     output_path: &Path,
     deflate_level: Option<i64>,
 ) -> Result<(), String> {
-    if let Some(parent) = output_path.parent() {
-        fs::create_dir_all(parent).map_err(|error| error.to_string())?;
-    }
+    // Enumerate before staging so an output inside this directory cannot include its own temporary file.
+    let files = collect_files_sorted(unpacked_dir)?;
+    write_export_file(output_path, |file| {
+        let mut writer = ZipWriter::new(BufWriter::with_capacity(EPUB_ZIP_WRITER_BUFFER_SIZE, file));
+        let stored = epub_export_options()
+            .compression_method(CompressionMethod::Stored)
+            .unix_permissions(0o644);
 
-    let tmp = output_path.with_extension("tmp");
-    let file = fs::File::create(&tmp).map_err(|error| error.to_string())?;
-    let mut writer = ZipWriter::new(BufWriter::with_capacity(EPUB_ZIP_WRITER_BUFFER_SIZE, file));
-    let stored = epub_export_options()
-        .compression_method(CompressionMethod::Stored)
-        .unix_permissions(0o644);
+        writer
+            .start_file("mimetype", stored)
+            .map_err(|error| error.to_string())?;
+        let mimetype = fs::read(unpacked_dir.join("mimetype")).unwrap_or_else(|_| b"application/epub+zip".to_vec());
+        writer.write_all(&mimetype).map_err(|error| error.to_string())?;
 
-    writer
-        .start_file("mimetype", stored)
-        .map_err(|error| error.to_string())?;
-    let mimetype = fs::read(unpacked_dir.join("mimetype")).unwrap_or_else(|_| b"application/epub+zip".to_vec());
-    writer.write_all(&mimetype).map_err(|error| error.to_string())?;
-
-    for path in collect_files_sorted(unpacked_dir)? {
-        let relative = zip_relative_path(unpacked_dir, &path)?;
-        if relative == "mimetype" {
-            continue;
+        for path in files {
+            let relative = zip_relative_path(unpacked_dir, &path)?;
+            if relative == "mimetype" {
+                continue;
+            }
+            write_epub_file(&mut writer, &relative, &path, deflate_level, stored)?;
         }
-        write_epub_file(&mut writer, &relative, &path, deflate_level, stored)?;
-    }
 
-    let mut output = writer.finish().map_err(|error| error.to_string())?;
-    output.flush().map_err(|error| error.to_string())?;
-    if output_path.exists() {
-        fs::remove_file(output_path).map_err(|error| error.to_string())?;
-    }
-    fs::rename(&tmp, output_path).map_err(|error| error.to_string())
+        let mut output = writer.finish().map_err(|error| error.to_string())?;
+        output.flush().map_err(|error| error.to_string())?;
+        Ok(())
+    })
 }
 
 pub(super) fn write_epub_from_original_and_unpacked(
@@ -255,71 +262,69 @@ pub(super) fn write_epub_from_original_and_unpacked(
 
     let source = fs::File::open(original_epub).map_err(|error| error.to_string())?;
     let mut archive = ZipArchive::new(source).map_err(|error| error.to_string())?;
-    if original_epub_file_count(&mut archive)? != collect_files_sorted(unpacked_dir)?.len() {
+    let files = collect_files_sorted(unpacked_dir)?;
+    if original_epub_file_count(&mut archive)? != files.len() {
         drop(archive);
         return write_epub_from_unpacked_dir(unpacked_dir, output_path, None);
     }
 
-    let tmp = output_path.with_extension("tmp");
-    let file = fs::File::create(&tmp).map_err(|error| error.to_string())?;
-    let mut writer = ZipWriter::new(BufWriter::with_capacity(EPUB_ZIP_WRITER_BUFFER_SIZE, file));
-    let stored = epub_export_options()
-        .compression_method(CompressionMethod::Stored)
-        .unix_permissions(0o644);
+    write_export_file(output_path, |file| {
+        let mut writer = ZipWriter::new(BufWriter::with_capacity(EPUB_ZIP_WRITER_BUFFER_SIZE, file));
+        let stored = epub_export_options()
+            .compression_method(CompressionMethod::Stored)
+            .unix_permissions(0o644);
 
-    writer
-        .start_file("mimetype", stored)
-        .map_err(|error| error.to_string())?;
-    let mimetype = fs::read(unpacked_dir.join("mimetype")).unwrap_or_else(|_| b"application/epub+zip".to_vec());
-    writer.write_all(&mimetype).map_err(|error| error.to_string())?;
+        writer
+            .start_file("mimetype", stored)
+            .map_err(|error| error.to_string())?;
+        let mimetype = fs::read(unpacked_dir.join("mimetype")).unwrap_or_else(|_| b"application/epub+zip".to_vec());
+        writer.write_all(&mimetype).map_err(|error| error.to_string())?;
 
-    let mut written = HashSet::from(["mimetype".to_string()]);
-    for index in 0..archive.len() {
-        let name = archive
-            .name_for_index(index)
-            .ok_or_else(|| "Invalid EPUB entry index".to_string())?
-            .map_err(|error| error.to_string())?
-            .into_owned();
-        let relative = normalize_zip_path(name.replace('\\', "/"));
-        if relative.is_empty() || relative == "mimetype" {
-            continue;
+        let mut written = HashSet::from(["mimetype".to_string()]);
+        for index in 0..archive.len() {
+            let name = archive
+                .name_for_index(index)
+                .ok_or_else(|| "Invalid EPUB entry index".to_string())?
+                .map_err(|error| error.to_string())?
+                .into_owned();
+            let relative = normalize_zip_path(name.replace('\\', "/"));
+            if relative.is_empty() || relative == "mimetype" {
+                continue;
+            }
+
+            let entry = archive.by_index(index).map_err(|error| error.to_string())?;
+            if entry.is_dir() {
+                continue;
+            }
+            drop(entry);
+
+            let unpacked_path = unpacked_dir.join(relative.replace('/', std::path::MAIN_SEPARATOR_STR));
+            if !unpacked_path.is_file() {
+                continue;
+            }
+
+            if should_copy_original_zip_entry(&relative, &unpacked_path)? {
+                let raw_entry = archive.by_index(index).map_err(|error| error.to_string())?;
+                writer.raw_copy_file(raw_entry).map_err(|error| error.to_string())?;
+            } else {
+                write_epub_file(&mut writer, &relative, &unpacked_path, None, stored)?;
+            }
+            written.insert(relative);
         }
 
-        let entry = archive.by_index(index).map_err(|error| error.to_string())?;
-        if entry.is_dir() {
-            continue;
-        }
-        drop(entry);
-
-        let unpacked_path = unpacked_dir.join(relative.replace('/', std::path::MAIN_SEPARATOR_STR));
-        if !unpacked_path.is_file() {
-            continue;
+        for path in files {
+            let relative = zip_relative_path(unpacked_dir, &path)?;
+            if written.contains(&relative) {
+                continue;
+            }
+            write_epub_file(&mut writer, &relative, &path, None, stored)?;
         }
 
-        if should_copy_original_zip_entry(&relative, &unpacked_path)? {
-            let raw_entry = archive.by_index(index).map_err(|error| error.to_string())?;
-            writer.raw_copy_file(raw_entry).map_err(|error| error.to_string())?;
-        } else {
-            write_epub_file(&mut writer, &relative, &unpacked_path, None, stored)?;
-        }
-        written.insert(relative);
-    }
-
-    for path in collect_files_sorted(unpacked_dir)? {
-        let relative = zip_relative_path(unpacked_dir, &path)?;
-        if written.contains(&relative) {
-            continue;
-        }
-        write_epub_file(&mut writer, &relative, &path, None, stored)?;
-    }
-
-    let mut output = writer.finish().map_err(|error| error.to_string())?;
-    output.flush().map_err(|error| error.to_string())?;
-    drop(archive);
-    if output_path.exists() {
-        fs::remove_file(output_path).map_err(|error| error.to_string())?;
-    }
-    fs::rename(&tmp, output_path).map_err(|error| error.to_string())
+        let mut output = writer.finish().map_err(|error| error.to_string())?;
+        output.flush().map_err(|error| error.to_string())?;
+        drop(archive);
+        Ok(())
+    })
 }
 
 pub(super) fn export_book_impl(
@@ -348,7 +353,7 @@ pub(super) fn export_book_impl(
                         fs::create_dir_all(parent).map_err(|error| error.to_string())?;
                     }
                     if !same_source_path(&book_path, &output_path) {
-                        fs::copy(&book_path, &output_path).map_err(|error| error.to_string())?;
+                        crate::atomic_file::copy_file(&book_path, &output_path)?;
                     }
                 }
                 BookSourceFormat::Epub => {
@@ -377,7 +382,10 @@ pub(super) fn export_book_impl(
             if let Some(parent) = output_path.parent() {
                 fs::create_dir_all(parent).map_err(|error| error.to_string())?;
             }
-            fs::copy(book_dir.join(SOURCE_TEXT_FILE), &output_path).map_err(|error| error.to_string())?;
+            let source = book_dir.join(SOURCE_TEXT_FILE);
+            if !same_source_path(&source, &output_path) {
+                crate::atomic_file::copy_file(&source, &output_path)?;
+            }
         }
     }
 

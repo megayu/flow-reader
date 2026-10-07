@@ -4404,6 +4404,97 @@ fn writes_splice_txt_source_update_without_losing_tail() {
 }
 
 #[test]
+fn book_exports_replace_only_the_destination_and_preserve_files_on_failure() {
+    let nonce = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos();
+    let root = std::env::temp_dir().join(format!("flow-reader-export-safety-{}-{nonce}", std::process::id()));
+    for kind in ["txt", "epub-copy", "epub-rebuild", "epub-reuse"] {
+        let case = root.join(kind);
+        let format = if kind == "txt" {
+            BookSourceFormat::Txt
+        } else {
+            BookSourceFormat::Epub
+        };
+        let storage = test_storage_with_book(&case.join("data"), test_library_book(format));
+        let source = storage
+            .book_dir("book")
+            .join(if kind == "txt" { SOURCE_TEXT_FILE } else { BOOK_FILE });
+        fs::create_dir_all(source.parent().unwrap()).unwrap();
+        if kind == "txt" {
+            fs::write(&source, b"complete new text").unwrap();
+        } else {
+            write_minimal_epub_file(&source, "Export Safety", "complete new text");
+        }
+        if matches!(kind, "epub-rebuild" | "epub-reuse") {
+            let unpacked = storage.book_dir("book").join(UNPACKED_DIR);
+            super::unpack_epub(&source, &unpacked).unwrap();
+            if kind == "epub-rebuild" {
+                fs::write(unpacked.join("extra.txt"), b"extra entry").unwrap();
+            }
+        }
+        let output = case.join(if kind == "txt" { "exported.txt" } else { "exported.epub" });
+        let unrelated = output.with_extension("tmp");
+        let previous = case.join("previous-version");
+        fs::write(&output, b"complete old export").unwrap();
+        fs::write(&unrelated, b"unrelated user file").unwrap();
+        fs::hard_link(&output, &previous).unwrap();
+        let export_format = if kind == "txt" {
+            BookExportFormat::Txt
+        } else {
+            BookExportFormat::Epub
+        };
+
+        #[cfg(windows)]
+        {
+            use std::os::windows::fs::OpenOptionsExt;
+            // Allow reading the old export, but prevent writes and replacement.
+            let lock = fs::OpenOptions::new().read(true).share_mode(1).open(&output).unwrap();
+            assert!(
+                export_book_impl(&storage, "book".into(), export_format, output.clone()).is_err(),
+                "{kind}"
+            );
+            assert_eq!(fs::read(&output).unwrap(), b"complete old export", "{kind}");
+            assert_eq!(fs::read(&unrelated).unwrap(), b"unrelated user file", "{kind}");
+            assert_eq!(
+                storage.library_book("book").unwrap().latest_export_revision,
+                None,
+                "{kind}"
+            );
+            drop(lock);
+        }
+
+        export_book_impl(&storage, "book".into(), export_format, output.clone()).unwrap();
+        assert_eq!(fs::read(&previous).unwrap(), b"complete old export", "{kind}");
+        assert_eq!(fs::read(&unrelated).unwrap(), b"unrelated user file", "{kind}");
+        if kind == "txt" {
+            assert_eq!(fs::read(&output).unwrap(), b"complete new text");
+        } else {
+            let mut archive = ZipArchive::new(fs::File::open(&output).unwrap()).unwrap();
+            let mut body = String::new();
+            archive
+                .by_name("OEBPS/chapter.xhtml")
+                .unwrap()
+                .read_to_string(&mut body)
+                .unwrap();
+            assert!(body.contains("complete new text"));
+        }
+        assert_eq!(
+            fs::read_dir(&case).unwrap().count(),
+            4,
+            "export staging files leaked: {kind}"
+        );
+
+        // Exporting onto the source must not truncate or keep an open source handle at publication.
+        export_book_impl(&storage, "book".into(), export_format, source.clone()).unwrap();
+        if kind == "txt" {
+            assert_eq!(fs::read(&source).unwrap(), b"complete new text");
+        } else {
+            assert!(ZipArchive::new(fs::File::open(&source).unwrap()).is_ok());
+        }
+    }
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
 fn exports_epub_with_required_mimetype_entry() {
     let nonce = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos();
     let root = std::env::temp_dir().join(format!("flow-reader-export-test-{}-{nonce}", std::process::id()));

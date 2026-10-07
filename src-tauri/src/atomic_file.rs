@@ -82,6 +82,22 @@ pub(crate) fn write_file(
     durability: Durability,
     write: impl FnOnce(&mut fs::File) -> io::Result<()>,
 ) -> Result<(), String> {
+    write_staged_file(path, durability, |_, file| write(file))
+}
+
+/// Keeps the platform's file-copy implementation while publishing only a complete copy.
+/// The destination directory must already exist.
+pub(crate) fn copy_file(source: &Path, target: &Path) -> Result<(), String> {
+    write_staged_file(target, Durability::Buffered, |temp, _| {
+        fs::copy(source, temp).map(|_| ())
+    })
+}
+
+fn write_staged_file(
+    path: &Path,
+    durability: Durability,
+    write: impl FnOnce(&Path, &mut fs::File) -> io::Result<()>,
+) -> Result<(), String> {
     static NEXT_TEMP: AtomicU64 = AtomicU64::new(0);
 
     let context =
@@ -115,7 +131,7 @@ pub(crate) fn write_file(
     }
     let (temp, mut file) = staged.ok_or_else(|| context("create temporary file", &"name collisions"))?;
     let result = (|| {
-        write(&mut file).map_err(|error| context("write temporary file", &error))?;
+        write(&temp, &mut file).map_err(|error| context("write temporary file", &error))?;
         if matches!(durability, Durability::Synced) {
             file.sync_all()
                 .map_err(|error| context("sync temporary file", &error))?;
