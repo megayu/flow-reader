@@ -1609,10 +1609,12 @@ class Contents extends EventEmitter<ContentsEvents> {
           )[WRITING_MODE] || ''
         : ''
     let documentMode = readWritingMode(this.documentElement)
-    if (mode || documentMode.indexOf('vertical') === 0) {
+    if (mode) {
       return documentMode
     }
 
+    // The body's computed mode includes inheritance and takes precedence over
+    // a conflicting root mode because the body owns the paginated content.
     let body = this.document && this.document.body
     let bodyMode = readWritingMode(body)
     if (bodyMode.indexOf('vertical') === 0) {
