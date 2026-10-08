@@ -442,6 +442,7 @@ impl TaskService {
     }
 
     pub(crate) fn run_background<T>(&self, task: impl FnOnce() -> Result<T, String>) -> Result<T, String> {
+        let _operation = crate::storage_activity::StorageOperation::enter()?;
         self.ensure_accepting(TaskPriority::Background)?;
         let cancel_epoch = self.inner.background_cancel_epoch.load(Ordering::SeqCst);
         let _permit = self.inner.background.acquire_interruptible(|| {

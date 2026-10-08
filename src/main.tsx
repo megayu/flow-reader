@@ -24,6 +24,10 @@ const recentBooksReady = db.recentBooks.get().catch((error) => {
 })
 
 async function handleAppCloseRequested() {
+  if (useAppStore.getState().storageMigrating) {
+    await invoke('cancel_app_close').catch(console.error)
+    return
+  }
   try {
     await windowUiStateReady
     await recentBooksReady

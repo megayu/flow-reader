@@ -1,3 +1,5 @@
+use crate::storage_activity::StorageAccess;
+
 mod error;
 pub mod http;
 pub mod import;
@@ -50,14 +52,14 @@ pub fn cancel_dictionary_session(
 
 #[tauri::command]
 pub fn list_local_dictionaries(
-    registry: tauri::State<'_, DictionaryRegistryStore>,
+    registry: StorageAccess<'_, DictionaryRegistryStore>,
 ) -> Result<Vec<LocalDictionaryRecord>, DictionaryRegistryError> {
     registry.list()
 }
 
 #[tauri::command]
 pub fn register_local_dictionary(
-    registry: tauri::State<'_, DictionaryRegistryStore>,
+    registry: StorageAccess<'_, DictionaryRegistryStore>,
     path: String,
 ) -> Result<LocalDictionaryRecord, DictionaryRegistryError> {
     registry.register(std::path::Path::new(&path))
@@ -65,7 +67,7 @@ pub fn register_local_dictionary(
 
 #[tauri::command]
 pub fn update_local_dictionary(
-    registry: tauri::State<'_, DictionaryRegistryStore>,
+    registry: StorageAccess<'_, DictionaryRegistryStore>,
     id: String,
     changes: LocalDictionaryUpdate,
 ) -> Result<LocalDictionaryRecord, DictionaryRegistryError> {
@@ -74,7 +76,7 @@ pub fn update_local_dictionary(
 
 #[tauri::command]
 pub fn relocate_local_dictionary(
-    registry: tauri::State<'_, DictionaryRegistryStore>,
+    registry: StorageAccess<'_, DictionaryRegistryStore>,
     id: String,
     path: String,
 ) -> Result<LocalDictionaryRecord, DictionaryRegistryError> {
@@ -83,7 +85,7 @@ pub fn relocate_local_dictionary(
 
 #[tauri::command]
 pub fn remove_local_dictionary(
-    registry: tauri::State<'_, DictionaryRegistryStore>,
+    registry: StorageAccess<'_, DictionaryRegistryStore>,
     id: String,
 ) -> Result<(), DictionaryRegistryError> {
     registry.remove(&id)
@@ -91,7 +93,7 @@ pub fn remove_local_dictionary(
 
 #[tauri::command]
 pub fn lookup_stardict(
-    registry: tauri::State<'_, DictionaryRegistryStore>,
+    registry: StorageAccess<'_, DictionaryRegistryStore>,
     sessions: tauri::State<'_, DictionarySessionManager>,
     dictionary_id: String,
     query: String,
@@ -132,7 +134,7 @@ pub fn lookup_stardict(
 
 #[tauri::command]
 pub fn lookup_mdict(
-    registry: tauri::State<'_, DictionaryRegistryStore>,
+    registry: StorageAccess<'_, DictionaryRegistryStore>,
     sessions: tauri::State<'_, DictionarySessionManager>,
     dictionary_id: String,
     query: String,
@@ -149,7 +151,7 @@ pub fn lookup_mdict(
 
 #[tauri::command]
 pub fn load_mdict_stylesheet(
-    registry: tauri::State<'_, DictionaryRegistryStore>,
+    registry: StorageAccess<'_, DictionaryRegistryStore>,
     sessions: tauri::State<'_, DictionarySessionManager>,
     dictionary_id: String,
     key: String,

@@ -1,3 +1,5 @@
+use crate::storage_activity::StorageAccess;
+
 use super::*;
 use std::collections::HashSet;
 
@@ -24,7 +26,7 @@ pub struct BookStateCheckpointInput {
 
 #[tauri::command]
 pub async fn persist_book_state(
-    storage: tauri::State<'_, AppStorage>,
+    storage: StorageAccess<'_, AppStorage>,
     checkpoint: BookStateCheckpointInput,
     flush: bool,
 ) -> Result<(), String> {

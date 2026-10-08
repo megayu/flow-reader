@@ -1,13 +1,12 @@
+use crate::storage_activity::StorageAccess;
+
 use std::{
     ffi::OsString,
     fs::{File, OpenOptions},
     sync::atomic::{AtomicU64, Ordering},
 };
 
-use tauri::{
-    State,
-    ipc::{InvokeBody, Request},
-};
+use tauri::ipc::{InvokeBody, Request};
 
 use super::*;
 
@@ -16,7 +15,7 @@ static DOWNLOAD_TEMP_NONCE: AtomicU64 = AtomicU64::new(0);
 
 #[tauri::command]
 pub async fn download_reader_image(
-    storage: State<'_, AppStorage>,
+    storage: StorageAccess<'_, AppStorage>,
     id: String,
     src: String,
     output_path: String,
@@ -43,6 +42,7 @@ pub async fn download_reader_image(
 
 #[tauri::command]
 pub async fn write_image_download(request: Request<'_>) -> Result<(), String> {
+    let _permit = crate::storage_activity::StorageOperation::enter()?;
     let output_path = request
         .headers()
         .get(OUTPUT_PATH_HEADER)

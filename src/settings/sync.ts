@@ -44,6 +44,10 @@ export function currentSettingsRevision() {
   return revision
 }
 
+export function flushNativeSettings() {
+  return enqueue(flushSettingsInStorage)
+}
+
 export async function flushSettingsIfChangedSince(openRevision: number) {
   if (revision === openRevision) return false
 

@@ -1,3 +1,5 @@
+use crate::storage_activity::StorageAccess;
+
 use std::{
     collections::{HashMap, HashSet, VecDeque},
     fs,
@@ -52,7 +54,7 @@ pub(super) fn next_tag_id(tags: &[LibraryTagRecord], created_at: u64) -> String 
 }
 
 #[tauri::command]
-pub fn list_books(storage: State<'_, AppStorage>) -> Result<Vec<BookRecord>, String> {
+pub fn list_books(storage: StorageAccess<'_, AppStorage>) -> Result<Vec<BookRecord>, String> {
     let state = storage
         .inner
         .state
@@ -68,7 +70,7 @@ pub fn list_books(storage: State<'_, AppStorage>) -> Result<Vec<BookRecord>, Str
 }
 
 #[tauri::command]
-pub fn list_tags(storage: State<'_, AppStorage>) -> Result<Vec<LibraryTagRecord>, String> {
+pub fn list_tags(storage: StorageAccess<'_, AppStorage>) -> Result<Vec<LibraryTagRecord>, String> {
     let state = storage
         .inner
         .state
@@ -79,7 +81,7 @@ pub fn list_tags(storage: State<'_, AppStorage>) -> Result<Vec<LibraryTagRecord>
 }
 
 #[tauri::command]
-pub fn get_library_pins(storage: State<'_, AppStorage>) -> Result<LibraryPins, String> {
+pub fn get_library_pins(storage: StorageAccess<'_, AppStorage>) -> Result<LibraryPins, String> {
     let state = storage
         .inner
         .state
@@ -89,7 +91,7 @@ pub fn get_library_pins(storage: State<'_, AppStorage>) -> Result<LibraryPins, S
 }
 
 #[tauri::command]
-pub fn get_recent_book_ids(storage: State<'_, AppStorage>) -> Result<Vec<String>, String> {
+pub fn get_recent_book_ids(storage: StorageAccess<'_, AppStorage>) -> Result<Vec<String>, String> {
     let state = storage
         .inner
         .state
@@ -107,7 +109,7 @@ pub enum LibraryPinKind {
 
 #[tauri::command]
 pub fn update_library_pin(
-    storage: State<'_, AppStorage>,
+    storage: StorageAccess<'_, AppStorage>,
     kind: LibraryPinKind,
     id: String,
     pinned: bool,
@@ -169,7 +171,7 @@ pub fn update_library_pin(
 }
 
 #[tauri::command]
-pub fn create_tag(storage: State<'_, AppStorage>, name: String) -> Result<Option<LibraryTagRecord>, String> {
+pub fn create_tag(storage: StorageAccess<'_, AppStorage>, name: String) -> Result<Option<LibraryTagRecord>, String> {
     let name = clean_tag_name(&name);
     if name.is_empty() {
         return Ok(None);
@@ -212,7 +214,7 @@ pub fn create_tag(storage: State<'_, AppStorage>, name: String) -> Result<Option
 
 #[tauri::command]
 pub fn update_tag(
-    storage: State<'_, AppStorage>,
+    storage: StorageAccess<'_, AppStorage>,
     id: String,
     name: String,
 ) -> Result<Option<LibraryTagRecord>, String> {
@@ -286,7 +288,7 @@ pub(super) fn delete_tags_impl(storage: &AppStorage, ids: Vec<String>) -> Result
 }
 
 #[tauri::command]
-pub fn delete_tags(storage: State<'_, AppStorage>, ids: Vec<String>) -> Result<Vec<BookRecord>, String> {
+pub fn delete_tags(storage: StorageAccess<'_, AppStorage>, ids: Vec<String>) -> Result<Vec<BookRecord>, String> {
     delete_tags_impl(&storage, ids)
 }
 
@@ -401,7 +403,7 @@ pub(super) fn merge_tags_impl(
 
 #[tauri::command]
 pub fn merge_tags(
-    storage: State<'_, AppStorage>,
+    storage: StorageAccess<'_, AppStorage>,
     ids: Vec<String>,
     target_id: Option<String>,
     target_name: Option<String>,
@@ -411,7 +413,7 @@ pub fn merge_tags(
 
 #[tauri::command]
 pub fn update_book_tags(
-    storage: State<'_, AppStorage>,
+    storage: StorageAccess<'_, AppStorage>,
     ids: Vec<String>,
     add_tag_ids: Vec<String>,
     remove_tag_ids: Vec<String>,
@@ -468,7 +470,7 @@ pub fn update_book_tags(
 
 #[tauri::command]
 pub fn update_book_reading_status(
-    storage: State<'_, AppStorage>,
+    storage: StorageAccess<'_, AppStorage>,
     ids: Vec<String>,
     reading_status: Option<ReadingStatus>,
 ) -> Result<(), String> {
@@ -495,7 +497,7 @@ pub fn update_book_reading_status(
 }
 
 #[tauri::command]
-pub fn get_book(storage: State<'_, AppStorage>, id: String) -> Result<Option<BookRecord>, String> {
+pub fn get_book(storage: StorageAccess<'_, AppStorage>, id: String) -> Result<Option<BookRecord>, String> {
     get_book_impl(&storage, id)
 }
 
@@ -525,7 +527,7 @@ pub(super) fn get_book_impl(storage: &AppStorage, id: String) -> Result<Option<B
 }
 
 #[tauri::command(async)]
-pub fn open_book_directory(storage: State<'_, AppStorage>, id: String) -> Result<(), String> {
+pub fn open_book_directory(storage: StorageAccess<'_, AppStorage>, id: String) -> Result<(), String> {
     let path = {
         let state = storage
             .inner
@@ -553,7 +555,7 @@ pub fn open_book_directory(storage: State<'_, AppStorage>, id: String) -> Result
 }
 
 #[tauri::command(async)]
-pub fn reveal_book_source(storage: State<'_, AppStorage>, id: String) -> Result<bool, String> {
+pub fn reveal_book_source(storage: StorageAccess<'_, AppStorage>, id: String) -> Result<bool, String> {
     let path = {
         let state = storage
             .inner
@@ -592,7 +594,10 @@ pub fn reveal_exported_file(path: String) -> Result<(), String> {
 }
 
 #[tauri::command]
-pub fn list_covers(storage: State<'_, AppStorage>, ids: Option<Vec<String>>) -> Result<Vec<CoverRecord>, String> {
+pub fn list_covers(
+    storage: StorageAccess<'_, AppStorage>,
+    ids: Option<Vec<String>>,
+) -> Result<Vec<CoverRecord>, String> {
     let ids = {
         let state = storage
             .inner
@@ -625,7 +630,7 @@ pub fn list_covers(storage: State<'_, AppStorage>, ids: Option<Vec<String>>) -> 
 
 #[tauri::command]
 pub async fn import_epub_paths(
-    storage: State<'_, AppStorage>,
+    storage: StorageAccess<'_, AppStorage>,
     tasks: State<'_, TaskService>,
     paths: Vec<String>,
     on_progress: Channel<BookImportProgress>,
@@ -744,7 +749,7 @@ fn book_import_filename(path: &Path) -> String {
 
 #[tauri::command]
 pub async fn open_external_epub_paths(
-    storage: State<'_, AppStorage>,
+    storage: StorageAccess<'_, AppStorage>,
     tasks: State<'_, TaskService>,
     paths: Vec<String>,
 ) -> Result<BookImportResult, String> {
@@ -908,7 +913,7 @@ pub fn get_text_import_encodings() -> Vec<TextImportEncodingOption> {
 
 #[tauri::command]
 pub async fn preview_text_import_paths(
-    storage: State<'_, AppStorage>,
+    storage: StorageAccess<'_, AppStorage>,
     tasks: State<'_, TaskService>,
     paths: Vec<String>,
     encodings: HashMap<String, String>,
@@ -1025,7 +1030,7 @@ fn text_import_prepare_worker_count(file_count: usize) -> usize {
 
 #[tauri::command]
 pub async fn import_text_paths(
-    storage: State<'_, AppStorage>,
+    storage: StorageAccess<'_, AppStorage>,
     tasks: State<'_, TaskService>,
     imports: Vec<TextImportSelection>,
     copy_source_files: Option<bool>,
@@ -1327,7 +1332,7 @@ fn finalize_import_batch(
 
 #[tauri::command]
 pub async fn get_book_reader_source(
-    storage: State<'_, AppStorage>,
+    storage: StorageAccess<'_, AppStorage>,
     tasks: State<'_, TaskService>,
     id: String,
 ) -> Result<BookReaderSource, String> {
@@ -1350,7 +1355,7 @@ pub async fn get_book_reader_source(
 
 #[tauri::command]
 pub async fn check_book_content_mode_switch(
-    storage: State<'_, AppStorage>,
+    storage: StorageAccess<'_, AppStorage>,
     id: String,
     editable: bool,
 ) -> Result<Option<BookModeSwitchConflict>, String> {
@@ -1362,7 +1367,7 @@ pub async fn check_book_content_mode_switch(
 
 #[tauri::command]
 pub async fn switch_book_content_mode(
-    storage: State<'_, AppStorage>,
+    storage: StorageAccess<'_, AppStorage>,
     tasks: State<'_, TaskService>,
     id: String,
     editable: bool,
@@ -1382,7 +1387,7 @@ pub async fn switch_book_content_mode(
 
 #[tauri::command]
 pub async fn check_book_source_statuses(
-    storage: State<'_, AppStorage>,
+    storage: StorageAccess<'_, AppStorage>,
     ids: Vec<String>,
 ) -> Result<Vec<BookSourceStatusRecord>, String> {
     let storage = (*storage).clone();
@@ -1414,7 +1419,7 @@ pub enum BookSearchResponse {
 
 #[tauri::command]
 pub async fn search_book_text(
-    storage: State<'_, AppStorage>,
+    storage: StorageAccess<'_, AppStorage>,
     tasks: State<'_, TaskService>,
     webview: tauri::Webview,
     id: String,
@@ -1476,7 +1481,7 @@ pub fn cancel_book_text_search(requests: State<'_, SearchRequests>, request_id: 
 
 #[tauri::command]
 pub async fn get_book_word_count(
-    storage: State<'_, AppStorage>,
+    storage: StorageAccess<'_, AppStorage>,
     tasks: State<'_, TaskService>,
     id: String,
 ) -> Result<u64, String> {
@@ -1489,7 +1494,7 @@ pub async fn get_book_word_count(
 
 #[tauri::command]
 pub async fn load_book_image_index(
-    storage: State<'_, AppStorage>,
+    storage: StorageAccess<'_, AppStorage>,
     tasks: State<'_, TaskService>,
     id: String,
 ) -> Result<ImageIndexCache, String> {
@@ -1513,7 +1518,7 @@ pub async fn load_book_image_index(
 
 #[tauri::command]
 pub async fn set_book_cache_active(
-    storage: State<'_, AppStorage>,
+    storage: StorageAccess<'_, AppStorage>,
     tasks: State<'_, TaskService>,
     id: String,
     active: bool,
@@ -1535,7 +1540,7 @@ pub async fn set_book_cache_active(
 
 #[tauri::command]
 pub async fn clear_book_caches(
-    storage: State<'_, AppStorage>,
+    storage: StorageAccess<'_, AppStorage>,
     tasks: State<'_, TaskService>,
     discard_unexported_edits: bool,
     preserved_unpacked_book_ids: Vec<String>,
@@ -1568,7 +1573,7 @@ pub struct BookCacheClearProgress {
 
 #[tauri::command]
 pub async fn replace_book_text(
-    storage: State<'_, AppStorage>,
+    storage: StorageAccess<'_, AppStorage>,
     tasks: State<'_, TaskService>,
     id: String,
     target: BookTextReplaceTarget,
@@ -1590,7 +1595,7 @@ pub async fn replace_book_text(
 
 #[tauri::command]
 pub async fn export_book(
-    storage: State<'_, AppStorage>,
+    storage: StorageAccess<'_, AppStorage>,
     tasks: State<'_, TaskService>,
     id: String,
     format: BookExportFormat,
@@ -1611,7 +1616,7 @@ pub async fn export_book(
 
 #[tauri::command]
 pub async fn cleanup_external_book(
-    storage: State<'_, AppStorage>,
+    storage: StorageAccess<'_, AppStorage>,
     tasks: State<'_, TaskService>,
     id: String,
 ) -> Result<(), String> {
@@ -1633,7 +1638,7 @@ pub async fn cleanup_external_book(
 
 #[tauri::command]
 pub async fn update_book(
-    storage: State<'_, AppStorage>,
+    storage: StorageAccess<'_, AppStorage>,
     tasks: State<'_, TaskService>,
     id: String,
     changes: Value,
@@ -1721,7 +1726,7 @@ fn update_book_impl(storage: &AppStorage, id: String, changes: Value) -> Result<
 
 #[tauri::command]
 pub async fn delete_books(
-    storage: State<'_, AppStorage>,
+    storage: StorageAccess<'_, AppStorage>,
     tasks: State<'_, TaskService>,
     ids: Vec<String>,
 ) -> Result<(), String> {

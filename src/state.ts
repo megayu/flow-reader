@@ -55,6 +55,7 @@ interface AppStore {
   readerSidebarWidth?: number
   settings: Settings
   settingsDialogOpen: boolean
+  storageMigrating: boolean
   settingsReady: boolean
   textImportRuleDefaults: TextImportRulesConfiguration
   viewMode: ViewMode
@@ -97,6 +98,7 @@ export const useAppStore = create<AppStore>((set) => ({
   readerSidebarWidth: undefined,
   settings: defaultSettings,
   settingsDialogOpen: false,
+  storageMigrating: false,
   settingsReady: false,
   textImportRuleDefaults: {
     groupPatterns: [],
@@ -152,7 +154,9 @@ export const useAppStore = create<AppStore>((set) => ({
     }),
   setSettingsDialogOpen: (value) =>
     set((state) => ({
-      settingsDialogOpen: resolveUpdate(value, state.settingsDialogOpen),
+      settingsDialogOpen: state.storageMigrating
+        ? state.settingsDialogOpen
+        : resolveUpdate(value, state.settingsDialogOpen),
     })),
   resetTextImportRule: (kind) =>
     set((state) => {

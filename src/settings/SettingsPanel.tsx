@@ -37,6 +37,7 @@ import { AboutSettings } from './AboutSettings'
 import { BookCacheSetting } from './BookCacheSetting'
 import { LocalDictionarySettings } from './LocalDictionarySettings'
 import { SettingsItem as Item } from './SettingsItem'
+import { StorageLocationSetting } from './StorageLocationSetting'
 import { TagSettings } from './TagSettings'
 
 type SettingsTab =
@@ -380,6 +381,7 @@ export const SettingsPanel: React.FC = () => {
                 />
               </Item>
               <BookCacheSetting />
+              <StorageLocationSetting />
             </div>
           )}
           {activeTab === 'tags' && <TagSettings />}

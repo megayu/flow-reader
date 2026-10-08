@@ -16,6 +16,7 @@ mod diagnostics;
 pub mod dictionary;
 mod file_manager;
 mod storage;
+mod storage_activity;
 mod tasks;
 mod translation;
 
@@ -114,7 +115,7 @@ fn get_window_ui_state(app: tauri::AppHandle) -> Result<storage::WindowUiState, 
 #[tauri::command]
 fn persist_app_close_state(
     window: tauri::Window,
-    storage: tauri::State<'_, storage::AppStorage>,
+    storage: storage_activity::StorageAccess<'_, storage::AppStorage>,
     coordinator: tauri::State<'_, AppCloseCoordinator>,
     close_state: storage::AppCloseInput,
 ) -> Result<(), String> {
@@ -134,6 +135,9 @@ fn cancel_app_close(state: tauri::State<'_, AppCloseCoordinator>) {
 }
 
 fn begin_app_exit(app: tauri::AppHandle) {
+    if !storage_activity::begin_exit() {
+        return;
+    }
     let Some(window) = app.get_webview_window("main") else {
         app.exit(0);
         return;
@@ -185,6 +189,7 @@ fn filter_directory_paths(paths: Vec<String>) -> Vec<String> {
 
 #[tauri::command]
 fn write_annotation_export(output_path: String, contents: String) -> Result<(), String> {
+    let _permit = storage_activity::StorageOperation::enter()?;
     fs::write(PathBuf::from(output_path), contents).map_err(|error| error.to_string())
 }
 
@@ -341,11 +346,18 @@ pub fn run() {
 
     builder
         .register_uri_scheme_protocol("dictionary", |context, request| {
+            let Ok(_operation) = storage_activity::StorageOperation::enter() else {
+                return tauri::http::Response::builder().status(503).body(Vec::new()).unwrap();
+            };
             dictionary::mdict::resource_protocol_response(context.app_handle(), request)
         })
         .register_asynchronous_uri_scheme_protocol("epub", |context, request, responder| {
             let app = context.app_handle().clone();
             drop(tauri::async_runtime::spawn_blocking(move || {
+                let Ok(_operation) = storage_activity::StorageOperation::enter() else {
+                    responder.respond(tauri::http::Response::builder().status(503).body(Vec::new()).unwrap());
+                    return;
+                };
                 responder.respond(storage::archive_resource_protocol_response(&app, request));
             }));
         })
@@ -371,7 +383,14 @@ pub fn run() {
                 }
             }
 
-            let storage = storage::AppStorage::load(app.handle()).map_err(std::io::Error::other)?;
+            let storage = match storage::AppStorage::load(app.handle()) {
+                Ok(storage) => storage,
+                Err(error) => {
+                    use tauri_plugin_dialog::DialogExt;
+                    app.dialog().message(error.clone()).title("Flow Reader").blocking_show();
+                    return Err(std::io::Error::other(error).into());
+                }
+            };
             // Recover interrupted deletes before exposing storage to commands or maintenance.
             if let Some(tasks) = app.try_state::<tasks::TaskService>() {
                 tasks.configure_io_for_path(storage.root());
@@ -399,6 +418,9 @@ pub fn run() {
             match event {
                 WindowEvent::CloseRequested { api, .. } => {
                     api.prevent_close();
+                    if storage_activity::is_migrating() {
+                        return;
+                    }
                     let app = window.app_handle().clone();
                     let coordinator = app.state::<AppCloseCoordinator>();
                     if !coordinator.0.swap(true, Ordering::SeqCst)
@@ -408,6 +430,9 @@ pub fn run() {
                     }
                 }
                 WindowEvent::Destroyed => {
+                    if storage_activity::is_migrating() {
+                        return;
+                    }
                     if let Some(storage) = window.try_state::<storage::AppStorage>() {
                         storage.flush_for_exit();
                     }
@@ -419,6 +444,9 @@ pub fn run() {
             }
         })
         .invoke_handler(tauri::generate_handler![
+            storage::migration::get_storage_location,
+            storage::migration::validate_storage_target,
+            storage::migration::migrate_storage,
             is_devtools_enabled,
             list_system_fonts,
             open_external_url,
@@ -491,6 +519,12 @@ pub fn run() {
         .build(tauri::generate_context!())
         .expect("error while building Flow")
         .run(|_app, _event| {
+            if let tauri::RunEvent::ExitRequested { api, code, .. } = &_event
+                && storage_activity::is_migrating()
+                && *code != Some(tauri::RESTART_EXIT_CODE)
+            {
+                api.prevent_exit();
+            }
             #[cfg(target_os = "macos")]
             if let tauri::RunEvent::Opened { urls, .. } = _event {
                 dispatch_open_paths(_app, collect_opened_epub_urls(urls));

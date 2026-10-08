@@ -34,6 +34,7 @@ mod folder_import;
 pub(crate) mod image_download;
 mod image_index;
 mod import_support;
+pub(crate) mod migration;
 mod model;
 mod publication;
 mod reading_metrics;
@@ -259,6 +260,7 @@ impl AppStorage {
 
     pub fn load(app: &AppHandle) -> Result<Self, String> {
         let root = data_root(app)?;
+        fs::create_dir_all(&root).map_err(|error| error.to_string())?;
         let mut library = read_json_or_default::<Library>(&library_path(&root)?)?;
         let migrated_content_access = book_source::migrate_platform_content_access(&mut library);
         if library.version != LIBRARY_VERSION {
@@ -663,6 +665,10 @@ fn data_root(app: &AppHandle) -> Result<PathBuf, String> {
         }
     }
 
+    migration::configured_data_root(&default_data_root(app)?)
+}
+
+fn default_data_root(app: &AppHandle) -> Result<PathBuf, String> {
     let default_dir = app.path().app_data_dir().map_err(|error| error.to_string())?;
     let base_dir = default_dir
         .parent()
@@ -685,7 +691,10 @@ fn settings_path(root: &Path) -> Result<PathBuf, String> {
 }
 
 fn window_state_path(app: &AppHandle) -> Result<PathBuf, String> {
-    Ok(data_root(app)?.join(WINDOW_STATE_FILE))
+    let root = app
+        .try_state::<AppStorage>()
+        .map(|storage| storage.root().to_path_buf());
+    Ok(root.map_or_else(|| data_root(app), Ok)?.join(WINDOW_STATE_FILE))
 }
 
 fn now_ms() -> u64 {

@@ -1,8 +1,9 @@
+use crate::storage_activity::StorageAccess;
+
 use super::text_import::default_text_import_rules_input;
 use super::{AppStorage, TextImportRulesInput};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
-use tauri::State;
 
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -54,7 +55,7 @@ fn text_import_rules_with_fallback(settings: &Value, fallback: TextImportRulesIn
 }
 
 #[tauri::command]
-pub fn get_settings(storage: State<'_, AppStorage>) -> Result<SettingsBootstrap, String> {
+pub fn get_settings(storage: StorageAccess<'_, AppStorage>) -> Result<SettingsBootstrap, String> {
     let state = storage
         .inner
         .state
@@ -67,7 +68,7 @@ pub fn get_settings(storage: State<'_, AppStorage>) -> Result<SettingsBootstrap,
 }
 
 #[tauri::command]
-pub fn update_settings(storage: State<'_, AppStorage>, settings: Value, flush: bool) -> Result<(), String> {
+pub fn update_settings(storage: StorageAccess<'_, AppStorage>, settings: Value, flush: bool) -> Result<(), String> {
     update_settings_impl(&storage, settings, flush)
 }
 
@@ -88,7 +89,7 @@ pub(super) fn update_settings_impl(storage: &AppStorage, settings: Value, flush:
 }
 
 #[tauri::command]
-pub fn reset_text_import_rule(storage: State<'_, AppStorage>, kind: TextImportRuleKind) -> Result<(), String> {
+pub fn reset_text_import_rule(storage: StorageAccess<'_, AppStorage>, kind: TextImportRuleKind) -> Result<(), String> {
     let defaults = default_text_import_rules_input();
     let (key, patterns) = match kind {
         TextImportRuleKind::Group => ("groupPatterns", defaults.group_patterns),
@@ -124,7 +125,7 @@ pub fn reset_text_import_rule(storage: State<'_, AppStorage>, kind: TextImportRu
 }
 
 #[tauri::command]
-pub fn flush_settings(storage: State<'_, AppStorage>) -> Result<(), String> {
+pub fn flush_settings(storage: StorageAccess<'_, AppStorage>) -> Result<(), String> {
     flush_settings_impl(&storage)
 }
 

@@ -1,7 +1,7 @@
 const WINDOWS_EXTENDED_PREFIX = '\\\\?\\'
 const WINDOWS_UNC_PREFIX = 'UNC\\'
 
-export function formatLocalPathForDisplay(path: string) {
+function stripWindowsExtendedPrefix(path: string) {
   if (!path.startsWith(WINDOWS_EXTENDED_PREFIX)) return path
 
   const nativePath = path.slice(WINDOWS_EXTENDED_PREFIX.length)
@@ -11,10 +11,14 @@ export function formatLocalPathForDisplay(path: string) {
   return /^[A-Za-z]:\\/.test(nativePath) ? nativePath : path
 }
 
-export function formatLocalDirectoryForDisplay(path: string) {
-  const nativePath = formatLocalPathForDisplay(path)
+export function formatLocalPathForDisplay(path: string) {
+  const nativePath = stripWindowsExtendedPrefix(path)
   const isWindowsPath = /^[A-Za-z]:[\\/]/.test(nativePath) || /^[\\/]{2}[^\\/]/.test(nativePath)
-  const displayPath = isWindowsPath ? nativePath.replaceAll('/', '\\') : nativePath
+  return isWindowsPath ? nativePath.replaceAll('/', '\\') : nativePath
+}
+
+export function formatLocalDirectoryForDisplay(path: string) {
+  const displayPath = formatLocalPathForDisplay(path)
   const separatorIndex = Math.max(displayPath.lastIndexOf('/'), displayPath.lastIndexOf('\\'))
 
   if (separatorIndex < 0) return ''

@@ -1963,6 +1963,9 @@ impl AppStorage {
         std::thread::spawn(move || {
             loop {
                 std::thread::sleep(Duration::from_secs(60));
+                let Ok(_operation) = crate::storage_activity::StorageOperation::enter() else {
+                    continue;
+                };
                 if let Err(error) = storage.maintain_derived_caches() {
                     eprintln!("Failed to maintain derived book caches: {error}");
                 }

@@ -1,3 +1,5 @@
+use crate::storage_activity::StorageAccess;
+
 use std::{
     collections::{HashMap, HashSet, VecDeque},
     fs,
@@ -5,7 +7,6 @@ use std::{
 };
 
 use serde::{Deserialize, Serialize};
-use tauri::State;
 
 use super::commands::{clean_tag_name, next_tag_id};
 use super::*;
@@ -264,7 +265,7 @@ pub(super) fn apply_folder_import_tags_impl(
 
 #[tauri::command]
 pub fn apply_folder_import_tags(
-    storage: State<'_, AppStorage>,
+    storage: StorageAccess<'_, AppStorage>,
     assignments: Vec<FolderImportTagAssignment>,
 ) -> Result<FolderImportTagResult, String> {
     apply_folder_import_tags_impl(&storage, assignments)
