@@ -71,6 +71,12 @@ jobs:
         if: matrix.browser
         run: pnpm exec playwright install --with-deps ${{ matrix.browser }}
 
+      # Complete toolchain installation before the 10-second environment probes.
+      - name: Set up Rust toolchain
+        if: matrix.lock
+        timeout-minutes: 5
+        run: rustup show
+
       - name: Cache Cargo dependencies
         if: matrix.lock
         uses: actions/cache@v5
