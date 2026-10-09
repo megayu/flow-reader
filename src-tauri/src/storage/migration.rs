@@ -330,9 +330,8 @@ fn rebase_reference(value: &mut serde_json::Value, source: &Path, target: &Path)
     let Some(path) = value.as_str() else {
         return;
     };
-    let original = Path::new(path);
-    let resolved = portable_path(&fs::canonicalize(original).unwrap_or_else(|_| original.to_path_buf()));
-    if let Ok(relative) = resolved.strip_prefix(portable_path(source)) {
+    let original = portable_path(Path::new(path));
+    if let Ok(relative) = original.strip_prefix(portable_path(source)) {
         *value = serde_json::json!(portable_path(target).join(relative));
     }
 }
@@ -364,6 +363,9 @@ fn relocate_directory(
     mut report: impl FnMut(MigrationProgress),
     publish: impl FnOnce() -> Result<bool, String>,
 ) -> Result<(), String> {
+    // Rebase stored references using the supplied roots, even when their files do not exist.
+    let reference_source = source;
+    let reference_target = target;
     let source = fs::canonicalize(source).map_err(|error| error.to_string())?;
     let target = fs::canonicalize(target).map_err(|error| error.to_string())?;
     // Canonicalize the parent because the pointer may not exist yet.
@@ -437,7 +439,7 @@ fn relocate_directory(
                 .set_times(fs::FileTimes::new().set_modified(modified))
                 .map_err(|error| error.to_string())?;
         }
-        rebase_references(&source, &target)?;
+        rebase_references(reference_source, reference_target)?;
         #[cfg(not(windows))]
         {
             for (entry, _) in transferred.iter().rev() {
@@ -664,7 +666,7 @@ mod tests {
             fs::create_dir_all(&target).unwrap();
             fs::write(source.join("books/book/book.epub"), b"complete book data").unwrap();
             let external = workspace.join("external.epub");
-            let missing = portable_path(&fs::canonicalize(&source).unwrap()).join("missing.epub");
+            let missing = source.join("missing.epub");
             let library = serde_json::json!({"books": [
                 {"sourcePath": source.join("books/book/book.epub")},
                 {"sourcePath": missing},
@@ -718,12 +720,12 @@ mod tests {
                 let copied: serde_json::Value =
                     serde_json::from_slice(&fs::read(target.join("library.json")).unwrap()).unwrap();
                 assert_eq!(
-                    fs::canonicalize(copied["books"][0]["sourcePath"].as_str().unwrap()).unwrap(),
-                    fs::canonicalize(target.join("books/book/book.epub")).unwrap()
+                    Path::new(copied["books"][0]["sourcePath"].as_str().unwrap()),
+                    target.join("books/book/book.epub")
                 );
                 assert_eq!(
                     Path::new(copied["books"][1]["sourcePath"].as_str().unwrap()),
-                    portable_path(&fs::canonicalize(&target).unwrap()).join("missing.epub")
+                    target.join("missing.epub")
                 );
                 assert_eq!(Path::new(copied["books"][2]["sourcePath"].as_str().unwrap()), external);
                 assert!(!source.join("books").exists());
