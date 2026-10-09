@@ -284,7 +284,6 @@
   "settings.source_storage.txt_copy.description": "開啟後匯入時儲存 TXT 副本，佔用額外空間，可匯出 TXT 與 EPUB；關閉則僅可匯出 EPUB。僅對新匯入書籍生效。",
   "settings.storage_location.current": "目前資料夾",
   "settings.storage_location.description": "將應用程式資料移至新資料夾，完成後自動重新啟動。",
-  "settings.storage_location.issue.sameDirectory": "與目前資料夾相同",
   "settings.storage_location.issue.unavailable": "資料夾無法存取",
   "settings.storage_location.migrate": "移動",
   "settings.storage_location.target": "目標資料夾",

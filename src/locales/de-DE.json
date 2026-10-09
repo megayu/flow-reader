@@ -284,7 +284,6 @@
   "settings.source_storage.txt_copy.description": "Speichert beim Import eine TXT-Kopie für Export als TXT und EPUB. Wenn deaktiviert, ist nur EPUB-Export möglich (nur für neue Importe).",
   "settings.storage_location.current": "Aktueller Ordner",
   "settings.storage_location.description": "App-Daten in einen neuen Ordner verschieben. Die App startet danach automatisch neu.",
-  "settings.storage_location.issue.sameDirectory": "Identisch mit dem aktuellen Ordner",
   "settings.storage_location.issue.unavailable": "Ordner ist nicht zugänglich",
   "settings.storage_location.migrate": "Verschieben",
   "settings.storage_location.target": "Zielordner",

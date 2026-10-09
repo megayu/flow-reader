@@ -91,10 +91,14 @@ pub(crate) struct MigrationTarget {
     issue: Option<&'static str>,
 }
 
-fn directory_is_empty(directory: &Path, pointer: Option<&Path>) -> Result<bool, &'static str> {
+fn directory_is_available(directory: &Path, source: &Path, pointer: Option<&Path>) -> Result<bool, &'static str> {
+    if directory == source {
+        return Ok(false);
+    }
     for entry in fs::read_dir(directory).map_err(|_| "unavailable")? {
         let entry = entry.map_err(|_| "unavailable")?;
-        if Some(entry.path().as_path()) != pointer {
+        let path = entry.path();
+        if path != source && Some(path.as_path()) != pointer {
             return Ok(false);
         }
     }
@@ -117,11 +121,8 @@ fn check_writable(target: &Path) -> Result<(), &'static str> {
 fn resolve_target(source: &Path, selected: &Path, pointer: &Path) -> Result<(PathBuf, bool), &'static str> {
     let source = fs::canonicalize(source).map_err(|_| "unavailable")?;
     let selected = fs::canonicalize(selected).map_err(|_| "unavailable")?;
-    if source == selected {
-        return Err("sameDirectory");
-    }
     let pointer = fs::canonicalize(pointer).ok();
-    if directory_is_empty(&selected, pointer.as_deref())? {
+    if directory_is_available(&selected, &source, pointer.as_deref())? {
         check_writable(&selected)?;
         return Ok((selected, false));
     }
@@ -140,12 +141,11 @@ fn resolve_target(source: &Path, selected: &Path, pointer: &Path) -> Result<(Pat
             Ok(metadata) => metadata,
             Err(_) => return Err("unavailable"),
         };
-        if metadata.is_dir() && !metadata.is_symlink() && directory_is_empty(&target, pointer.as_deref())? {
+        if metadata.is_dir() && !metadata.is_symlink() && directory_is_available(&target, &source, pointer.as_deref())?
+        {
             let target = fs::canonicalize(target).map_err(|_| "unavailable")?;
-            if target != source {
-                check_writable(&target)?;
-                return Ok((target, false));
-            }
+            check_writable(&target)?;
+            return Ok((target, false));
         }
     }
     Err("unavailable")
@@ -581,7 +581,10 @@ mod tests {
                 );
             }
         }
-        assert_eq!(resolve_target(&source, &source, &pointer).unwrap_err(), "sameDirectory");
+        let (target, create_directory) = resolve_target(&source, &source, &pointer).unwrap();
+        assert_eq!(target, fs::canonicalize(&source).unwrap().join(TARGET_FOLDER));
+        assert!(create_directory);
+        assert!(!target.exists());
         fs::remove_dir_all(workspace).unwrap();
     }
 
@@ -592,11 +595,12 @@ mod tests {
         for fail_commit in [false, true] {
             let root = workspace.join(if fail_commit { "rollback" } else { "success" });
             let default = root.join("default");
-            let custom = root.join("custom");
             fs::create_dir_all(&default).unwrap();
-            fs::create_dir_all(&custom).unwrap();
             fs::write(default.join("book.epub"), b"book data").unwrap();
             let pointer = default.join(LOCATION_FILE);
+            let (custom, create_directory) = resolve_target(&default, &default, &pointer).unwrap();
+            let prepared = prepare_target(&custom, create_directory).unwrap();
+            let custom = portable_path(&prepared.directory);
             relocate_directory(
                 &default,
                 &custom,

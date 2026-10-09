@@ -284,7 +284,6 @@
   "settings.source_storage.txt_copy.description": "When enabled, TXT files are copied during import, using additional storage and allowing export to both TXT and EPUB. When disabled, only EPUB export is available. Applies only to new imports.",
   "settings.storage_location.current": "Current folder",
   "settings.storage_location.description": "Move app data to a new folder. The app restarts automatically after migration.",
-  "settings.storage_location.issue.sameDirectory": "Same as the current folder",
   "settings.storage_location.issue.unavailable": "Folder is inaccessible",
   "settings.storage_location.migrate": "Migrate",
   "settings.storage_location.target": "Target folder",

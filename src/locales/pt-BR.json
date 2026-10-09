@@ -284,7 +284,6 @@
   "settings.source_storage.txt_copy.description": "Salva uma cópia do TXT ao importar (espaço adicional) para permitir exportação em TXT e EPUB. Desativado permite apenas exportação em EPUB (apenas novas importações).",
   "settings.storage_location.current": "Pasta atual",
   "settings.storage_location.description": "Move os dados do aplicativo para uma nova pasta. O aplicativo reinicia automaticamente ao terminar.",
-  "settings.storage_location.issue.sameDirectory": "É a pasta atual",
   "settings.storage_location.issue.unavailable": "Não é possível acessar a pasta",
   "settings.storage_location.migrate": "Mover",
   "settings.storage_location.target": "Pasta de destino",

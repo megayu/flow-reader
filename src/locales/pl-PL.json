@@ -284,7 +284,6 @@
   "settings.source_storage.txt_copy.description": "Zapisuje kopię pliku TXT podczas importu (dodatkowe miejsce), umożliwiając eksport do TXT i EPUB. Wyłączone pozwala tylko na eksport EPUB (tylko nowe importy).",
   "settings.storage_location.current": "Bieżący folder",
   "settings.storage_location.description": "Przenieś dane aplikacji do nowego folderu. Po zakończeniu aplikacja uruchomi się ponownie automatycznie.",
-  "settings.storage_location.issue.sameDirectory": "To bieżący folder",
   "settings.storage_location.issue.unavailable": "Nie można uzyskać dostępu do folderu",
   "settings.storage_location.migrate": "Przenieś",
   "settings.storage_location.target": "Folder docelowy",

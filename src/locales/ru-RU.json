@@ -284,7 +284,6 @@
   "settings.source_storage.txt_copy.description": "Сохраняет копию TXT при импорте (дополнительное место), позволяя экспорт в TXT и EPUB. При отключении доступен только экспорт в EPUB (только новые импорты).",
   "settings.storage_location.current": "Текущая папка",
   "settings.storage_location.description": "Переместить данные приложения в новую папку. После завершения приложение автоматически перезапустится.",
-  "settings.storage_location.issue.sameDirectory": "Совпадает с текущей папкой",
   "settings.storage_location.issue.unavailable": "Нет доступа к папке",
   "settings.storage_location.migrate": "Переместить",
   "settings.storage_location.target": "Целевая папка",

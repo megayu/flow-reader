@@ -284,7 +284,6 @@
   "settings.source_storage.txt_copy.description": "有効にすると、取り込み時に TXT コピーを保存します（追加容量を使用）。TXT と EPUB の両方でエクスポート可能になります。無効にすると EPUB のみエクスポートできます（新規取り込みのみに適用）。",
   "settings.storage_location.current": "現在のフォルダー",
   "settings.storage_location.description": "アプリのデータを新しいフォルダーに移動します。完了後、アプリが自動的に再起動します。",
-  "settings.storage_location.issue.sameDirectory": "現在のフォルダーと同じです",
   "settings.storage_location.issue.unavailable": "フォルダーにアクセスできません",
   "settings.storage_location.migrate": "移動",
   "settings.storage_location.target": "移動先フォルダー",

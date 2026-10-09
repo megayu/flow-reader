@@ -284,7 +284,6 @@
   "settings.source_storage.txt_copy.description": "Salva una copia del file TXT all'importazione (spazio aggiuntivo) per consentire l'esportazione in TXT ed EPUB. Se disattivato, sarà possibile solo l'esportazione EPUB (solo nuove importazioni).",
   "settings.storage_location.current": "Cartella attuale",
   "settings.storage_location.description": "Sposta i dati dell’app in una nuova cartella. L’app si riavvia automaticamente al termine.",
-  "settings.storage_location.issue.sameDirectory": "È la cartella attuale",
   "settings.storage_location.issue.unavailable": "Cartella non accessibile",
   "settings.storage_location.migrate": "Sposta",
   "settings.storage_location.target": "Cartella di destinazione",

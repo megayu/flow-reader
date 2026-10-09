@@ -23,7 +23,7 @@ interface StorageLocation {
 interface MigrationTarget {
   directory: string
   createDirectory: boolean
-  issue: 'sameDirectory' | 'unavailable' | null
+  issue: 'unavailable' | null
 }
 
 interface MigrationProgress {
