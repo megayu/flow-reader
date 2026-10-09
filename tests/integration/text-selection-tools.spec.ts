@@ -629,7 +629,20 @@ test('stops active speech on every dictionary popup exit path', async ({ page })
 })
 
 test('opens the compact translation popup and Escape returns to the text menu', async ({ page }) => {
-  await setupTranslationReader(page, { delayMs: 150 })
+  await setupTranslationReader(page)
+  const releaseTranslation = await page.evaluateHandle(() => {
+    const internals = (window as any).__TAURI_INTERNALS__
+    const invoke = internals.invoke
+    let release!: () => void
+    const responseReady = new Promise<void>((resolve) => {
+      release = resolve
+    })
+    internals.invoke = async (command: string, args: unknown) => {
+      if (command === 'fetch_translation') await responseReady
+      return invoke(command, args)
+    }
+    return release
+  })
   await selectFixtureText(page, 'sample')
 
   await page.getByRole('button', { name: msg('menu.translate'), exact: true }).click()
@@ -637,6 +650,8 @@ test('opens the compact translation popup and Escape returns to the text menu', 
   await expect(popup).toBeVisible()
   await expect(popup.getByRole('combobox').nth(0)).toContainText(msg('translation.auto_detect'))
   await expect(iconButton(popup, 'copy')).toBeDisabled()
+  await releaseTranslation.evaluate((release) => release())
+  await releaseTranslation.dispose()
   await expect(popup.getByText('Google: sample', { exact: true })).toBeVisible()
   await expect(iconButton(popup, 'copy')).toBeEnabled()
   await expect(popup.locator('[data-flow-translation-splitter]')).toBeVisible()
