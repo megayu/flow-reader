@@ -2,6 +2,16 @@
 
 ## [Unreleased]
 
+## [0.1.5] - 2026-10-09
+
+- Added support for moving app data to a custom storage folder.
+- Added error messages and retry options for book searches and search result excerpts.
+- Improved EPUB compatibility in areas such as chapter display, table of contents navigation, writing direction, etc.
+- Improved data protection and recovery when saving changes, importing and exporting books, deleting books, and clearing caches.
+- Improved app startup performance with large libraries.
+- Improved app startup compatibility on Linux.
+- Several bug fixes.
+
 ## [0.1.4] - 2026-09-24
 
 - Added folded-corner markers for highlights with personal notes and improved sidebar navigation to open the note editor.
