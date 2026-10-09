@@ -436,9 +436,12 @@ mod tests {
                 stream
                     .set_read_timeout(Some(remaining))
                     .expect("set request header timeout");
-                let read = stream
-                    .read(&mut chunk)
-                    .expect("read dictionary HTTP request headers before deadline");
+                let read = match stream.read(&mut chunk) {
+                    Ok(read) => read,
+                    // Cancellation can close the connection before all request headers arrive.
+                    Err(error) if error.kind() == std::io::ErrorKind::ConnectionReset => return,
+                    Err(error) => panic!("read dictionary HTTP request headers before deadline: {error}"),
+                };
                 if read == 0 {
                     break;
                 }
