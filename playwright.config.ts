@@ -54,7 +54,7 @@ export default defineConfig({
   use: {
     baseURL: `http://${host}:${port}`,
     locale: 'en-US',
-    trace: 'retain-on-failure',
+    trace: 'off',
     screenshot: 'only-on-failure',
     video: 'off',
   },

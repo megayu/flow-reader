@@ -26,7 +26,7 @@ export default defineConfig({
       enabled: true,
       headless: true,
       trace: {
-        mode: 'retain-on-failure',
+        mode: 'off',
         tracesDir: fileURLToPath(new URL('../../test-results/epub-engine/traces', import.meta.url)),
       },
       screenshotDirectory: fileURLToPath(new URL('../../test-results/epub-engine/screenshots', import.meta.url)),
