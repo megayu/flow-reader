@@ -3961,7 +3961,9 @@ test('long-book note popovers share the reader document without changing paginat
       .getByRole('link', { name: reference!.endsWith('repeat') ? 'Unmarked return' : 'Return', exact: true })
       .click()
     await expect(popup()).toHaveCount(0)
-    await expect.poll(async () => (await geometry()).location).toEqual(destination)
+    await expect
+      .poll(() => page.evaluate(() => (window as any).reader.focusedBookTab.rendition.location))
+      .toEqual(destination)
   }
 })
 
