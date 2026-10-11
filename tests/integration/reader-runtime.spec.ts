@@ -1498,6 +1498,39 @@ test('[scriptless-xhtml] blocks scripts when an authored comment resembles a hea
   await expect(page.locator('html')).not.toHaveAttribute('data-epub-xhtml-script-executed', 'true')
 })
 
+test('[scriptless-xhtml] blocks executable nested documents while displaying the chapter', async ({ page }) => {
+  await page.route('**/test-assets/scriptless-xhtml/OPS/chapter_001.xhtml*', (route) =>
+    route.fulfill({
+      contentType: 'application/xhtml+xml',
+      body: `<html xmlns="http://www.w3.org/1999/xhtml">
+<head><title>Static chapter</title></head>
+<body><p>STATIC-CHAPTER-TEXT</p><iframe src="executable.html"></iframe></body>
+</html>`,
+    }),
+  )
+  await page.route('**/test-assets/scriptless-xhtml/OPS/executable.html', (route) =>
+    route.fulfill({
+      contentType: 'text/html',
+      body: `<html><body><p>EXECUTABLE-NESTED-DOCUMENT</p>
+<script>window.parent.parent.document.documentElement.dataset.epubNestedScriptExecuted = 'true'</script>
+</body></html>`,
+    }),
+  )
+
+  await openFixtureBook(page, 0)
+  const chapter = page
+    .locator('[data-flow-reader-pane][aria-hidden="false"] iframe')
+    .filter({ visible: true })
+    .first()
+    .contentFrame()
+  await expect(chapter.getByText('STATIC-CHAPTER-TEXT')).toBeVisible()
+  const nestedText = await chapter
+    .locator('iframe')
+    .evaluate((iframe: HTMLIFrameElement) => iframe.contentDocument?.body?.textContent ?? '')
+  expect(nestedText).not.toContain('EXECUTABLE-NESTED-DOCUMENT')
+  await expect(page.locator('html')).not.toHaveAttribute('data-epub-nested-script-executed', 'true')
+})
+
 test('opens the note editor after navigating from a sidebar note', async ({ page }) => {
   await openFixtureBook(page, 0)
   await waitForStableReaderLayout(page, { header: false })

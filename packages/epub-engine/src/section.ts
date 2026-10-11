@@ -49,9 +49,32 @@ function isBitmapMediaType(mediaType: string | undefined) {
 }
 
 const XHTML_NAMESPACE = 'http://www.w3.org/1999/xhtml'
-const SCRIPT_BLOCKING_CSP_CONTENT = "script-src 'none'; object-src 'none'"
+const SCRIPT_BLOCKING_CSP_CONTENT =
+  "script-src 'none'; object-src 'none'; frame-src 'none'; form-action 'none'"
 
 function serializeWithScriptBlockingCsp(
+  doc: Document,
+  contents: Element,
+  mediaType?: string,
+) {
+  // A refresh navigates away from the document carrying the blocking policy.
+  // Restore authored nodes after serialization to preserve scripted opt-in renders.
+  const refreshNodes = Array.from(doc.querySelectorAll('meta[http-equiv]'))
+    .filter((node) => node.getAttribute('http-equiv')?.trim().toLowerCase() === 'refresh')
+    .map((node) => ({ node, parent: node.parentNode!, next: node.nextSibling }))
+  for (const { node, parent } of refreshNodes) parent.removeChild(node)
+
+  try {
+    return serializeWithContentPolicy(doc, contents, mediaType)
+  } finally {
+    for (let index = refreshNodes.length - 1; index >= 0; index--) {
+      const { node, parent, next } = refreshNodes[index]!
+      parent.insertBefore(node, next)
+    }
+  }
+}
+
+function serializeWithContentPolicy(
   doc: Document,
   contents: Element,
   mediaType?: string,

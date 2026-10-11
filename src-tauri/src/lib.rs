@@ -272,11 +272,15 @@ where
     I: IntoIterator<Item = P>,
     P: Into<PathBuf>,
 {
-    paths
-        .into_iter()
-        .map(Into::into)
-        .filter(|path| is_epub_file(path))
-        .collect()
+    let paths = paths.into_iter().map(Into::into).collect::<Vec<PathBuf>>();
+    // Protocol activation must never double as a request to open local files.
+    if paths
+        .iter()
+        .any(|path| path.to_str().is_some_and(is_flow_reader_deep_link))
+    {
+        return Vec::new();
+    }
+    paths.into_iter().filter(|path| is_epub_file(path)).collect()
 }
 
 fn is_epub_file(path: &Path) -> bool {
@@ -326,6 +330,16 @@ fn collect_opened_epub_urls(urls: Vec<tauri::Url>) -> Vec<PathBuf> {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    // Windows single-instance IPC uses an unescaped pipe as its argv separator.
+    // Reject it before the plugin can turn one URL into additional file arguments.
+    #[cfg(windows)]
+    if std::env::args_os()
+        .skip(1)
+        .any(|arg| arg.to_string_lossy().contains('|'))
+    {
+        return;
+    }
+
     let pending_open_files = collect_epub_paths(std::env::args_os().skip(1));
 
     let builder = tauri::Builder::default()
@@ -391,6 +405,10 @@ pub fn run() {
                     return Err(std::io::Error::other(error).into());
                 }
             };
+            // Book resources are the only filesystem assets
+            // exposed to the WebView; settings and unrelated local files stay private.
+            app.asset_protocol_scope()
+                .allow_directory(storage.root().join("books"), true)?;
             // Recover interrupted deletes before exposing storage to commands or maintenance.
             if let Some(tasks) = app.try_state::<tasks::TaskService>() {
                 tasks.configure_io_for_path(storage.root());
