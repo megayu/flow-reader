@@ -382,7 +382,7 @@ function testInlineWrappedParagraphsFollowReaderFont() {
     new FakeElement('p', {
       className: 'main',
       style: {
-        fontFamily: 'serif',
+        fontFamily: 'PingFang SC',
       },
     }).append(wrapper),
   )
@@ -414,9 +414,9 @@ function testVisibleNestedTextDefinesTypographyBaseline() {
   ensureBodyTextMarkers(contents)
   assert.strictEqual(visible.getAttribute(bodyTextFontSizeRatioAttribute), '1')
   assert.strictEqual(visible.getAttribute(bodyTextFontWeightOffsetAttribute), '0')
-  assert.strictEqual(visible.getAttribute(bodyTextInlineFollowFontAttribute), 'true')
+  assert.strictEqual(visible.getAttribute(bodyTextInlineFollowFontAttribute), null)
   assert.strictEqual(emphasis.getAttribute(bodyTextFontSizeRatioAttribute), '1.4')
-  assert.strictEqual(emphasis.getAttribute(bodyTextInlineSecondaryFontAttribute), 'true')
+  assert.strictEqual(emphasis.getAttribute(bodyTextInlineSecondaryFontAttribute), null)
 }
 
 function testBookNotesShareRelativeTypographyWithoutParagraphLayout() {
@@ -632,7 +632,7 @@ function testBodyTextVariantsPreserveOriginalFontFamily() {
     styledParagraph('main', mainText, { fontFamily: 'serif' }),
     styledParagraph('main', mainText, { fontFamily: 'serif' }),
     styledParagraph('variant', variantText, { fontFamily: 'monospace' }),
-    styledParagraph('variant', variantText, { fontFamily: 'monospace' }),
+    styledParagraph('variant', variantText, { fontFamily: 'cursive' }),
     styledParagraph('same-font', sameFontVariantText, {
       fontFamily: 'serif',
       textIndent: '32px',
@@ -645,8 +645,14 @@ function testBodyTextVariantsPreserveOriginalFontFamily() {
 
   const alternateInline = new FakeElement('span', { style: { fontFamily: 'sans-serif' } }).append('Alternate text.')
   const mainInline = new FakeElement('span', { style: { fontFamily: 'serif' } }).append('Main text.')
+  const matchingInline = new FakeElement('span', { style: { fontFamily: 'monospace' } }).append('Matching text.')
+  const otherMatchingInline = new FakeElement('span', { style: { fontFamily: 'cursive' } }).append('Other text.')
+  const preservedChild = new FakeElement('span', { style: { fontFamily: 'serif' } }).append('Preserved child.')
+  const returningChild = new FakeElement('span', { style: { fontFamily: 'monospace' } }).append('Returning child.')
+  mainInline.append(preservedChild, returningChild)
   paragraphs[0]!.append(alternateInline)
-  paragraphs[3]!.append(mainInline)
+  paragraphs[3]!.append(mainInline, matchingInline)
+  paragraphs[4]!.append(otherMatchingInline)
   body.append(...paragraphs)
 
   const contents = createContents(body)
@@ -664,8 +670,12 @@ function testBodyTextVariantsPreserveOriginalFontFamily() {
     assert.strictEqual(el.getAttribute(bodyTextAttribute), 'true')
     assert.strictEqual(el.getAttribute(bodyTextPreserveFontAttribute), null)
   })
-  assert.strictEqual(alternateInline.getAttribute(bodyTextInlineSecondaryFontAttribute), 'true')
-  assert.strictEqual(mainInline.getAttribute(bodyTextInlineFollowFontAttribute), 'true')
+  assert.strictEqual(matchingInline.getAttribute(bodyTextInlineSecondaryFontAttribute), 'true')
+  assert.strictEqual(otherMatchingInline.getAttribute(bodyTextInlineSecondaryFontAttribute), 'true')
+  for (const inline of [alternateInline, mainInline, preservedChild, returningChild]) {
+    assert.strictEqual(inline.getAttribute(bodyTextInlineFollowFontAttribute), null)
+    assert.strictEqual(inline.getAttribute(bodyTextInlineSecondaryFontAttribute), null)
+  }
   const primaryOnly = createBodyTextTypographyCss(contents.document, { fontFamily: 'Primary Serif' })
   const secondaryOnly = createBodyTextTypographyCss(contents.document, {}, 'Secondary Serif')
   assert.match(primaryOnly, /font-family:\s*Primary Serif, serif\s*!important/)

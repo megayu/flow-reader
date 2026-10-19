@@ -181,12 +181,13 @@ function clearBodyTextMarkers(candidates: HTMLElement[]) {
     el.removeAttribute(bodyTextFontSizeRatioAttribute)
     el.removeAttribute(bodyTextFontFallbackAttribute)
     el.removeAttribute(bodyTextFontWeightOffsetAttribute)
-    walkBodyTextInlineElements(el, (inline) => {
+    walkBodyTextInlineElements(el, undefined, (inline) => {
       inline.removeAttribute(bodyTextFontSizeRatioAttribute)
       inline.removeAttribute(bodyTextFontFallbackAttribute)
       inline.removeAttribute(bodyTextInlineFollowFontAttribute)
       inline.removeAttribute(bodyTextInlineSecondaryFontAttribute)
       inline.removeAttribute(bodyTextFontWeightOffsetAttribute)
+      return undefined
     })
   })
 }
@@ -207,7 +208,7 @@ function applyBodyTextMarkers(contents: Contents, candidates: HTMLElement[], bod
       candidate.setAttribute(bodyTextPreserveFontAttribute, 'true')
     }
     applyRelativeTypographyMarkers(candidate, marker)
-    applyBodyTextInlineTypographyMarkers(contents, candidate, marker, primaryFontFamily)
+    applyBodyTextInlineTypographyMarkers(contents, candidate, marker)
   })
   const baselineElement = primaryElement ?? contents.document.body
   if (baselineElement) {
@@ -249,13 +250,12 @@ function applyRelativeTypographyMarkers(
   }
 }
 
-function applyBodyTextInlineTypographyMarkers(
-  contents: Contents,
-  candidate: HTMLElement,
-  marker: BodyTextMarker,
-  primaryFontFamily: string | undefined,
-) {
+function applyBodyTextInlineTypographyMarkers(contents: Contents, candidate: HTMLElement, marker: BodyTextMarker) {
   const parentStyle = contents.window.getComputedStyle(candidate)
+  const fontContext: { family: string; attribute: string | undefined } = {
+    family: normalizeFontFamily(parentStyle.fontFamily),
+    attribute: marker.preserveFont ? bodyTextInlineSecondaryFontAttribute : bodyTextInlineFollowFontAttribute,
+  }
   const parentFontSize = parseCssPixel(parentStyle.fontSize)
   const parentFontWeight = parseCssFontWeight(parentStyle.fontWeight)
   // Cached paragraph ratios reconstruct the same section baseline in a fresh
@@ -267,26 +267,29 @@ function applyBodyTextInlineTypographyMarkers(
       ? parentFontWeight - marker.fontWeightOffset
       : undefined
 
-  walkBodyTextInlineElements(candidate, (inline) => {
+  walkBodyTextInlineElements(candidate, fontContext, (inline, parentContext) => {
     const style = contents.window.getComputedStyle(inline)
     applyRelativeTypographyMarkers(inline, getRelativeTypography(style, baselineFontSize, baselineFontWeight))
     const family = normalizeFontFamily(style.fontFamily)
-    const primary = family === primaryFontFamily
+    // A different authored font starts a preserved subtree. Descendants follow
+    // their direct parent, never rejoin a paragraph or section font by name.
+    const attribute = family === parentContext.family ? parentContext.attribute : undefined
     inline.setAttribute(bodyTextFontFallbackAttribute, getBodyTextFontFallback(style.fontFamily))
-    inline.setAttribute(primary ? bodyTextInlineFollowFontAttribute : bodyTextInlineSecondaryFontAttribute, 'true')
+    if (attribute) inline.setAttribute(attribute, 'true')
+    return { family, attribute }
   })
 }
 
-function walkBodyTextInlineElements(root: HTMLElement, visit: (el: HTMLElement) => void) {
-  const walk = (node: Node) => {
+function walkBodyTextInlineElements<T>(root: HTMLElement, context: T, visit: (el: HTMLElement, context: T) => T) {
+  const walk = (node: Node, parentContext: T) => {
     if (!isHTMLElement(node)) return
     if (isInlineTypographyExcludedElement(node)) return
 
-    if (hasNonWhitespaceText(node.textContent)) visit(node)
-    node.childNodes.forEach(walk)
+    const childContext = hasNonWhitespaceText(node.textContent) ? visit(node, parentContext) : parentContext
+    node.childNodes.forEach((child) => walk(child, childContext))
   }
 
-  root.childNodes.forEach(walk)
+  root.childNodes.forEach((child) => walk(child, context))
 }
 
 function isInlineTypographyExcludedElement(el: HTMLElement) {

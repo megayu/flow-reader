@@ -105,14 +105,12 @@ export function createBodyTextTypographyCss(
   }
 
   if (secondaryFontFamily) {
-    css += `${bodyTextSelector}[${bodyTextPreserveFontAttribute}="true"], [${bodyTextInlineSecondaryFontAttribute}="true"] {
+    const inlineSecondarySelector = `:root [${bodyTextInlineSecondaryFontAttribute}="true"]`
+    css += `${bodyTextSelector}[${bodyTextPreserveFontAttribute}="true"], ${inlineSecondarySelector} {
       ${mapToCss({ fontFamily: `${secondaryFontFamily}, sans-serif` })}
     }`
     css += createFontFallbackOverrides(
-      [
-        `${bodyTextSelector}[${bodyTextPreserveFontAttribute}="true"]`,
-        `[${bodyTextInlineSecondaryFontAttribute}="true"]`,
-      ],
+      [`${bodyTextSelector}[${bodyTextPreserveFontAttribute}="true"]`, inlineSecondarySelector],
       secondaryFontFamily,
     )
   }
