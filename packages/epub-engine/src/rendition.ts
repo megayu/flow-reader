@@ -111,6 +111,7 @@ import { extend, defer } from './utils/core'
 import Hook from './utils/hook'
 import Queue from './utils/queue'
 import ReaderSession from './reader-session'
+import { getMediaContentWidth } from './content-zoom'
 import { ensureHtmlHead } from './utils/replacements'
 
 export const RenditionSpread = Object.freeze({
@@ -1019,13 +1020,17 @@ class Rendition extends EventEmitter<RenditionEvents> {
       0.95
     let horizontalPadding =
       parseFloat(computed.paddingLeft) + parseFloat(computed.paddingRight)
+    let mediaWidth = getMediaContentWidth(
+      this._layout,
+      horizontalPadding,
+      computed.writingMode,
+    )
 
     contents.addStylesheetRules({
       img: {
         'max-width':
-          (this._layout.columnWidth
-            ? `min(100%, ${this._layout.columnWidth - horizontalPadding}px)`
-            : '100%') + '!important',
+          (this._layout.columnWidth ? `min(100%, ${mediaWidth}px)` : '100%') +
+          '!important',
         'max-height': height + 'px' + '!important',
         'object-fit': 'contain',
         'page-break-inside': 'avoid',
@@ -1034,9 +1039,8 @@ class Rendition extends EventEmitter<RenditionEvents> {
       },
       svg: {
         'max-width':
-          (this._layout.columnWidth
-            ? `min(100%, ${this._layout.columnWidth - horizontalPadding}px)`
-            : '100%') + '!important',
+          (this._layout.columnWidth ? `min(100%, ${mediaWidth}px)` : '100%') +
+          '!important',
         'max-height': height + 'px' + '!important',
         'page-break-inside': 'avoid',
         'break-inside': 'avoid',

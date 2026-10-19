@@ -1,7 +1,8 @@
 import type PageBackgrounds from '../src/page-backgrounds'
 import type Section from '../src/section'
 import type Layout from '../src/layout'
-import type Contents from '../src/contents'
+import Contents from '../src/contents'
+import { createContentZoomCss } from '../src/content-zoom'
 import type { LegacyWindow } from '../src/utils/core'
 import { double } from './support/double'
 import { assert } from 'vitest'
@@ -417,6 +418,81 @@ describe('IframeView leading background block fitting', function () {
 })
 
 describe('IframeView media fitting', function () {
+  it('fits percentage images through their container across page modes and zoom', async function () {
+    for (const { spread, width } of [
+      { spread: false, width: 1000 },
+      { spread: false, width: 1868 },
+      { spread: true, width: 1868 },
+    ]) {
+      for (const zoom of [0.8, 1, 1.5]) {
+        const frame = document.createElement('iframe')
+        frame.style.width = width + 'px'
+        frame.style.height = '800px'
+        document.body.appendChild(frame)
+        const doc = frame.contentDocument!
+        doc.open()
+        doc.write(`<!doctype html><html><head><style>
+          .art { margin: 0 -1.5% 1em; text-align: center; }
+          .art img { display: block; width: 100%; max-width: 100%; height: auto; }
+        </style></head><body><div class="art"><img alt="Synthetic chapter art" src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='1600' height='900'/%3E"></div><h2>Synthetic chapter</h2></body></html>`)
+        doc.close()
+        const contents = new Contents(doc, doc.body)
+        try {
+          const view = createView({})
+          Object.assign(view.layout, {
+            width,
+            height: 800,
+            columnWidth: spread ? width / 2 - 40 : width,
+            gap: 40,
+          })
+          view.contents = contents
+          const image = doc.querySelector('img')!
+          await image.decode()
+          contents.columns(width, 800, view.layout.columnWidth, 40)
+          view.fitMediaBeforeMeasure()
+          await Rendition.prototype.adjustImages.call(
+            { _layout: view.layout },
+            contents,
+          )
+          contents.addStylesheetCss(
+            createContentZoomCss(
+              contents,
+              view.layout,
+              'horizontal',
+              zoom,
+              'horizontal-tb',
+            ),
+            'custom',
+          )
+          const imageRect = image.getBoundingClientRect()
+          const containerRect = image.parentElement!.getBoundingClientRect()
+          const contentWidth = spread ? width / 2 - 40 : width - 40
+          assert.closeTo(
+            containerRect.width,
+            contentWidth,
+            1,
+            'container fits the writable page column',
+          )
+          assert.closeTo(
+            imageRect.width,
+            containerRect.width,
+            1,
+            '100% image fills its container',
+          )
+          assert.closeTo(
+            containerRect.left,
+            20,
+            1,
+            'container starts at the writable page edge',
+          )
+        } finally {
+          contents.destroy()
+          frame.remove()
+        }
+      }
+    }
+  })
+
   it('preserves the containing block width cap after rendition hooks', async function () {
     const view = createView({})
     const content = document.createElement('div')

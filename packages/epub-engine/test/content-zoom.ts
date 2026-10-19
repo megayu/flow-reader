@@ -139,10 +139,10 @@ function testZoomMediaUsesScaledContentColumnWidth() {
     'horizontal',
   )
 
-  assert.strictEqual(styles.createZoomMediaMaxInlineSize(source, 2), 210)
+  assert.strictEqual(styles.createZoomMediaMaxInlineSize(source, 2), 230)
   assert.match(
     styles.createZoomMediaCss(source, 2),
-    /max-inline-size:\s*210px !important/,
+    /max-inline-size:\s*230px !important/,
     'zoomed media must fit within the scaled single-page content column',
   )
 }

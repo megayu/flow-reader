@@ -61,7 +61,7 @@ type ContentRangeSummary = {
 }
 
 import EventEmitter from '../../utils/event-emitter'
-import { createContentZoomCss } from '../../content-zoom'
+import { createContentZoomCss, getMediaContentWidth } from '../../content-zoom'
 import { WavyUnderline, VerticalUnderline } from '../helpers/annotation-marks'
 import { Pane, Highlight, Underline } from '../helpers/annotation-pane'
 
@@ -969,12 +969,60 @@ class IframeView extends EventEmitter<ViewEvents> {
       0.95
     let horizontalPadding =
       parseFloat(computed.paddingLeft) + parseFloat(computed.paddingRight)
+    let mediaWidth = getMediaContentWidth(
+      this.layout,
+      horizontalPadding,
+      computed.writingMode,
+    )
     let maxWidth = this.layout.columnWidth
-      ? `min(100%, ${this.layout.columnWidth - horizontalPadding}px)`
+      ? `min(100%, ${mediaWidth}px)`
       : '100%'
+
+    // Adapt pure image wrappers, so authored 100% images can continue to fill
+    // their container instead of being shrunk independently of its bleed margins.
+    if (
+      this.settings.axis === 'horizontal' &&
+      computed.writingMode === 'horizontal-tb' &&
+      computed.columnWidth !== 'auto'
+    ) {
+      let root = this.contents!.content
+      let images = root.querySelectorAll('img:only-child')
+      let containers: HTMLElement[] = []
+      for (let image of images) {
+        let parent = image.parentElement
+        if (
+          !parent ||
+          parent === root ||
+          textLength(parent.textContent) ||
+          parent.hasAttribute('data-flow-epub-media-container')
+        ) {
+          continue
+        }
+        let style = this.contents!.window.getComputedStyle(parent)
+        if (
+          style.display === 'block' &&
+          style.cssFloat === 'none' &&
+          style.writingMode === 'horizontal-tb' &&
+          (style.position === 'static' || style.position === 'relative') &&
+          (parseFloat(style.marginLeft) < 0 ||
+            parseFloat(style.marginRight) < 0)
+        ) {
+          containers.push(parent)
+        }
+      }
+      for (let container of containers) {
+        container.setAttribute('data-flow-epub-media-container', 'true')
+      }
+    }
 
     this.contents!.addStylesheetRules(
       {
+        ':root [data-flow-epub-media-container]': {
+          'max-width': '100%!important',
+          'margin-left': '0!important',
+          'margin-right': '0!important',
+          'box-sizing': 'border-box!important',
+        },
         img: {
           'max-width': maxWidth + '!important',
           'max-height': height + 'px' + '!important',

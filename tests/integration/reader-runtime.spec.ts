@@ -4984,7 +4984,12 @@ test('keeps zoomed images inside the current page column in double page mode', a
         const paddingRight = bodyStyle ? Number.parseFloat(bodyStyle.paddingRight) || 0 : 0
         const zoom = tab?.book?.configuration?.typography?.zoom ?? 1
         const columnWidth = typeof layout?.columnWidth === 'number' ? layout.columnWidth : 0
-        const maxVisualWidth = columnWidth - (paddingLeft + paddingRight) * zoom
+        const bodyWidth = Number.parseFloat(bodyStyle?.width ?? '') || 0
+        const columnGap = Number.parseFloat(bodyStyle?.columnGap ?? '') || 0
+        const declaredColumnWidth = Number.parseFloat(bodyStyle?.columnWidth ?? '') || 0
+        const availableWidth = bodyWidth - paddingLeft - paddingRight
+        const columnCount = Math.max(1, Math.floor((availableWidth + columnGap) / (declaredColumnWidth + columnGap)))
+        const maxVisualWidth = ((availableWidth - (columnCount - 1) * columnGap) / columnCount) * zoom
 
         return {
           bodyTransform: bodyStyle?.transform,

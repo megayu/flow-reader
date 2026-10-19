@@ -84,6 +84,19 @@ function formatCssPixelValue(value: number) {
   return `${Math.round(value * 1000) / 1000}px`
 }
 
+export function getMediaContentWidth(
+  layout: Pick<Layout, 'width' | 'columnWidth' | 'gap'>,
+  inlinePadding: number,
+  writingMode = 'horizontal-tb',
+) {
+  // Spread columnWidth already excludes the page gap. A single-column body
+  // still includes its own inline padding in the declared width.
+  const spread =
+    writingMode === 'horizontal-tb' &&
+    layout.width > layout.columnWidth + layout.gap
+  return Math.max(layout.columnWidth - (spread ? 0 : inlinePadding), 1)
+}
+
 export function createZoomMediaMaxInlineSize(
   source: StyleSource,
   zoom: number,
@@ -101,7 +114,17 @@ export function createZoomMediaMaxInlineSize(
   const endPadding = readCssPixelValue(
     vertical ? source.paddingBottom : source.paddingRight,
   )
-  const contentWidth = columnWidth - (startPadding ?? 0) - (endPadding ?? 0)
+  const inlinePadding = (startPadding ?? 0) + (endPadding ?? 0)
+  const contentWidth = vertical
+    ? columnWidth - inlinePadding
+    : getMediaContentWidth(
+        {
+          width: readCssPixelValue(source.width) ?? columnWidth,
+          columnWidth,
+          gap: readCssPixelValue(source.columnGap) ?? 0,
+        },
+        inlinePadding,
+      )
   if (!Number.isFinite(contentWidth) || contentWidth <= 0) return
 
   return contentWidth / zoom
@@ -116,10 +139,25 @@ export function createZoomMediaCss(
   if (maxInlineSize === undefined) return ''
 
   const maxInlineSizeCss = formatCssPixelValue(maxInlineSize)
+  const height = readCssPixelValue(source.height)
+  const contentHeight =
+    height === undefined
+      ? undefined
+      : height -
+        (readCssPixelValue(source.paddingTop) ?? 0) -
+        (readCssPixelValue(source.paddingBottom) ?? 0)
+  // Match the unzoomed media height policy in body coordinates; otherwise a
+  // scaled image can exceed the fragment height and split across columns.
+  const maxHeight =
+    (!writingMode || writingMode === 'horizontal-tb') &&
+    contentHeight !== undefined && contentHeight > 0
+      ? `max-height: ${formatCssPixelValue((contentHeight * 0.95) / zoom)} !important;`
+      : ''
 
   return `${zoomConstrainedMediaSelector} {
     max-width: ${maxInlineSizeCss} !important;
     max-inline-size: ${maxInlineSizeCss} !important;
+    ${maxHeight}
     box-sizing: border-box !important;
     object-fit: contain !important;
   }
