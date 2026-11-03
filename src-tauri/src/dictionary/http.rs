@@ -242,6 +242,9 @@ fn map_request_error(error: reqwest::Error) -> DictionaryHttpError {
     if error.is_timeout() {
         return DictionaryHttpError::new("timeout", "Dictionary request timed out");
     }
+    if error.is_dns() {
+        return DictionaryHttpError::new("dns", "Could not resolve the dictionary service hostname");
+    }
     let mut cause: Option<&(dyn std::error::Error + 'static)> = Some(&error);
     while let Some(error) = cause {
         if error.to_string().contains(REDIRECT_FORBIDDEN_MARKER) {

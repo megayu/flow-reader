@@ -195,7 +195,7 @@ async fn read_response(
     response: Result<reqwest::Response, reqwest::Error>,
     service: &str,
 ) -> Result<String, TranslationError> {
-    let response = response.map_err(|error| TranslationError::new("network", error.to_string()))?;
+    let response = response.map_err(translation_request_error)?;
     let status = response.status();
     if !status.is_success() {
         return Err(TranslationError::new(
@@ -212,10 +212,7 @@ async fn read_response(
             "Translation response is too large",
         ));
     }
-    let bytes = response
-        .bytes()
-        .await
-        .map_err(|error| TranslationError::new("network", error.to_string()))?;
+    let bytes = response.bytes().await.map_err(translation_request_error)?;
     if bytes.len() > MAX_RESPONSE_BYTES {
         return Err(TranslationError::new(
             "response_too_large",
@@ -223,6 +220,14 @@ async fn read_response(
         ));
     }
     Ok(String::from_utf8_lossy(&bytes).into_owned())
+}
+
+fn translation_request_error(error: reqwest::Error) -> TranslationError {
+    if error.is_dns() {
+        TranslationError::new("dns", "Could not resolve the translation service hostname")
+    } else {
+        TranslationError::new("network", error.to_string())
+    }
 }
 
 #[tauri::command]

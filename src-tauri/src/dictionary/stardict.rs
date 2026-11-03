@@ -5,7 +5,7 @@ use std::{
     sync::Mutex,
 };
 
-use flate2::read::DeflateDecoder;
+use flate2::{Decompress, FlushDecompress};
 use memmap2::{Mmap, MmapOptions};
 use serde::{Deserialize, Serialize};
 
@@ -143,8 +143,10 @@ impl StarDictReader {
             File::open(cache.join("offsets.bin")).map_err(|error| io_error("indexUnavailable", error))?;
         // App-generated cache files and registered source files remain immutable
         // for the lifetime of a dictionary lookup session.
-        let offsets =
-            unsafe { MmapOptions::new().map(&offsets_file) }.map_err(|error| io_error("indexUnavailable", error))?;
+        // These mappings never need write or execute access, so skip probing
+        // for wider handle permissions on Windows.
+        let offsets = unsafe { MmapOptions::new().no_probe_handle().map(&offsets_file) }
+            .map_err(|error| io_error("indexUnavailable", error))?;
         let (header, entry_table_start) = read_index_header(&offsets)?;
         if header.fingerprint != inspected.fingerprint {
             return Err(StarDictError::new(
@@ -169,15 +171,16 @@ impl StarDictReader {
         }
         let index_path = used_file(&inspected, DictionaryFileKind::Index)?;
         let index_file = File::open(index_path).map_err(|error| io_error("indexUnavailable", error))?;
-        let index =
-            unsafe { MmapOptions::new().map(&index_file) }.map_err(|error| io_error("indexUnavailable", error))?;
+        let index = unsafe { MmapOptions::new().no_probe_handle().map(&index_file) }
+            .map_err(|error| io_error("indexUnavailable", error))?;
         let synonyms = if synonym_count == 0 {
             None
         } else {
             optional_used_file(&inspected, DictionaryFileKind::Synonyms)
                 .map(|path| {
                     let file = File::open(path).map_err(|error| io_error("invalidSynonym", error))?;
-                    unsafe { MmapOptions::new().map(&file) }.map_err(|error| io_error("invalidSynonym", error))
+                    unsafe { MmapOptions::new().no_probe_handle().map(&file) }
+                        .map_err(|error| io_error("invalidSynonym", error))
                 })
                 .transpose()?
         };
@@ -452,7 +455,7 @@ impl DictZipTable {
         if last >= self.chunk_sizes.len() || last - first + 1 > MAX_DICTZIP_BLOCKS {
             return Err(invalid_dictzip("The requested dictzip block range is invalid."));
         }
-        let mut decoded = Vec::with_capacity((last - first + 1) * self.chunk_length as usize);
+        let mut decoded = Vec::with_capacity((last - first + 1) * self.chunk_length as usize + 1);
         let mut file = file
             .lock()
             .map_err(|_| StarDictError::new("dataLockFailed", "Dictionary data lock failed."))?;
@@ -462,13 +465,21 @@ impl DictZipTable {
             file.seek(SeekFrom::Start(self.compressed_offsets[block]))
                 .and_then(|_| file.read_exact(&mut compressed))
                 .map_err(|error| io_error("dataReadFailed", error))?;
-            let mut decoder = DeflateDecoder::new(compressed.as_slice());
+            let expected_size =
+                self.chunk_length
+                    .min(self.uncompressed_size - block as u64 * self.chunk_length) as usize;
+            let start = decoded.len();
+            // Dictzip chunks end at full-flush boundaries, not necessarily at stream end.
+            // One extra output byte detects blocks larger than their declared size.
+            decoded.resize(start + expected_size + 1, 0);
+            let mut decoder = Decompress::new(false);
             decoder
-                .read_to_end(&mut decoded)
-                .map_err(|error| io_error("invalidDictzip", error))?;
-            if decoded.len() > (last - first + 1) * self.chunk_length as usize {
-                return Err(invalid_dictzip("A dictzip block expands beyond its declared size."));
+                .decompress(&compressed, &mut decoded[start..], FlushDecompress::Sync)
+                .map_err(|error| invalid_dictzip(&error.to_string()))?;
+            if decoder.total_in() != compressed.len() as u64 || decoder.total_out() != expected_size as u64 {
+                return Err(invalid_dictzip("A dictzip block does not match its declared size."));
             }
+            decoded.truncate(start + expected_size);
         }
         let start = (offset % self.chunk_length) as usize;
         let end = start

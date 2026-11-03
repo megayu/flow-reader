@@ -3633,7 +3633,7 @@ verticalBookTest('[vertical-rl] places note popover on the physical left with ve
     popover.firstElementChild!.appendChild(paragraph)
   })
   await expect(popover.locator(':scope > div').first()).toHaveCSS('overflow-x', 'auto')
-  await expect(popover.locator(':scope > div').first()).toHaveCSS('overflow-y', 'hidden')
+  await expect(popover.locator(':scope > div').first()).toHaveCSS('overflow-y', /^(hidden|clip)$/)
   expect(await readLayout()).toEqual(before)
   await page.keyboard.press('Escape')
   await expect(popover).toHaveCount(0)

@@ -47,6 +47,7 @@
   "error.deep_link_book_not_found": "連結中的書籍不在目前書庫中",
   "error.export_failed": "匯出失敗",
   "error.folder_import_failed": "資料夾匯入失敗",
+  "error.network_dns": "無法解析服務位址，請檢查網路或 DNS 設定後重試。",
   "error.open_book_directory_failed": "開啟書籍所在資料夾失敗",
   "error.operation_failed": "{1}失敗",
   "error.reader_navigation_failed": "書內連結跳轉失敗",

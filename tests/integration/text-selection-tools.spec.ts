@@ -783,8 +783,7 @@ test('resizes the source and translation regions with the splitter', async ({ pa
   await page.mouse.move(handle.x + handle.width / 2, handle.y + handle.height / 2 + 30)
   await page.mouse.up()
 
-  const after = await source.boundingBox()
-  expect(after?.height).toBeGreaterThan(before.height)
+  await expect.poll(async () => (await source.boundingBox())?.height).toBeGreaterThan(before.height)
 })
 
 test('keeps the dictionary action disabled when no source matches the selection', async ({ page }) => {

@@ -1,3 +1,4 @@
+import { getErrorCode } from '../../errorMessage'
 import type { DictionaryProvider } from '../coordinator'
 import { fetchZdic } from '../native'
 import { beginDictionarySession } from '../session'
@@ -17,12 +18,14 @@ export class ZdicParseError extends Error {
 }
 
 class ZdicLookupError extends Error {
+  code?: string
   externalUrl: string
 
-  constructor(message: string, externalUrl: string) {
+  constructor(message: string, externalUrl: string, code?: string) {
     super(message)
     this.name = 'ZdicLookupError'
     this.externalUrl = externalUrl
+    this.code = code
   }
 }
 
@@ -42,7 +45,7 @@ export const zdicProvider: DictionaryProvider = {
       if (signal.aborted || error instanceof ZdicParseError) throw error
       if (isNotFoundError(error)) return null
       const message = error instanceof Error ? error.message : String(error)
-      throw new ZdicLookupError(message, zdicExternalUrl(query.text))
+      throw new ZdicLookupError(message, zdicExternalUrl(query.text), getErrorCode(error))
     } finally {
       session.detachCancellation()
     }

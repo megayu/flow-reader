@@ -210,6 +210,7 @@ export function useSidebarWidth(viewMode: ViewMode) {
 }
 
 function makeValueSetter<Value, Setter>(getValue: (state: AppStore) => Value, getSetter: (state: AppStore) => Setter) {
+  // biome-ignore lint/correctness/noComponentHookFactories: All calls are at module scope, so exported hook identities stay stable across renders.
   return function useValueSetter() {
     const value = useAppStore(getValue)
     const setter = useAppStore(getSetter)

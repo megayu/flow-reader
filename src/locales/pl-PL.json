@@ -47,6 +47,7 @@
   "error.deep_link_book_not_found": "Powiązana książka nie znajduje się w tej bibliotece",
   "error.export_failed": "Eksport nie powiódł się",
   "error.folder_import_failed": "Import folderu nie powiódł się",
+  "error.network_dns": "Nie można rozpoznać adresu usługi. Sprawdź ustawienia sieci lub DNS i spróbuj ponownie.",
   "error.open_book_directory_failed": "Nie udało się otworzyć folderu książki",
   "error.operation_failed": "Niepowodzenie: {1}",
   "error.reader_navigation_failed": "Nie udało się przejść do odnośnika w książce",

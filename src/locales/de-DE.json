@@ -47,6 +47,7 @@
   "error.deep_link_book_not_found": "Das verlinkte Buch befindet sich nicht in dieser Bibliothek",
   "error.export_failed": "Export fehlgeschlagen",
   "error.folder_import_failed": "Ordnerimport fehlgeschlagen",
+  "error.network_dns": "Die Adresse des Dienstes konnte nicht aufgelöst werden. Prüfen Sie Ihre Netzwerk- oder DNS-Einstellungen und versuchen Sie es erneut.",
   "error.open_book_directory_failed": "Buchordner konnte nicht geöffnet werden",
   "error.operation_failed": "{1} fehlgeschlagen",
   "error.reader_navigation_failed": "Buchverweis konnte nicht geöffnet werden",

@@ -47,6 +47,7 @@
   "error.deep_link_book_not_found": "Il libro collegato non è presente in questa libreria",
   "error.export_failed": "Esportazione non riuscita",
   "error.folder_import_failed": "Importazione cartella non riuscita",
+  "error.network_dns": "Impossibile risolvere l'indirizzo del servizio. Controlla le impostazioni di rete o DNS e riprova.",
   "error.open_book_directory_failed": "Impossibile aprire la cartella del libro",
   "error.operation_failed": "Errore: {1}",
   "error.reader_navigation_failed": "Impossibile seguire il collegamento nel libro",

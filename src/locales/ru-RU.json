@@ -47,6 +47,7 @@
   "error.deep_link_book_not_found": "Связанная книга отсутствует в этой библиотеке",
   "error.export_failed": "Ошибка экспорта",
   "error.folder_import_failed": "Не удалось импортировать папку",
+  "error.network_dns": "Не удалось определить адрес сервиса. Проверьте настройки сети или DNS и повторите попытку.",
   "error.open_book_directory_failed": "Не удалось открыть папку книги",
   "error.operation_failed": "Ошибка: {1}",
   "error.reader_navigation_failed": "Не удалось перейти по ссылке в книге",

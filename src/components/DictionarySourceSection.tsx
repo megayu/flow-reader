@@ -73,7 +73,11 @@ export function DictionarySourceSection({
         </div>
       ) : source.status === 'error' ? (
         <div className="text-muted-foreground px-5 py-2 text-sm leading-snug">
-          {source.error === 'Could not parse this entry.' ? t('dictionary.parse_error') : t('dictionary.lookup_error')}
+          {source.errorCode === 'dns'
+            ? t('error.network_dns')
+            : source.error === 'Could not parse this entry.'
+              ? t('dictionary.parse_error')
+              : t('dictionary.lookup_error')}
         </div>
       ) : source.status === 'empty' ? (
         <div className="text-muted-foreground px-5 py-2 text-sm leading-snug">{t('dictionary.no_result')}</div>

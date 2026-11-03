@@ -47,6 +47,7 @@
   "error.deep_link_book_not_found": "链接中的书籍不在当前书库中",
   "error.export_failed": "导出失败",
   "error.folder_import_failed": "文件夹导入失败",
+  "error.network_dns": "无法解析服务地址，请检查网络或 DNS 设置后重试。",
   "error.open_book_directory_failed": "打开书籍所在文件夹失败",
   "error.operation_failed": "{1}失败",
   "error.reader_navigation_failed": "书内链接跳转失败",

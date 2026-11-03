@@ -47,6 +47,7 @@
   "error.deep_link_book_not_found": "リンク先の書籍は本棚に見つかりません",
   "error.export_failed": "エクスポートに失敗しました",
   "error.folder_import_failed": "フォルダーの取り込みに失敗しました",
+  "error.network_dns": "サービスのアドレスを名前解決できません。ネットワークまたは DNS の設定を確認して、もう一度お試しください。",
   "error.open_book_directory_failed": "書籍のフォルダーを開けませんでした",
   "error.operation_failed": "{1}に失敗しました",
   "error.reader_navigation_failed": "書籍内のリンクに移動できませんでした",

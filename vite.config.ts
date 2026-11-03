@@ -1,6 +1,6 @@
 import { execFileSync } from 'node:child_process'
 import { readFileSync } from 'node:fs'
-import { resolve } from 'node:path'
+import { basename, resolve } from 'node:path'
 import { fileURLToPath, URL } from 'node:url'
 
 import tailwindcss from '@tailwindcss/vite'
@@ -51,10 +51,11 @@ const watchedPaths = [
   'packages/epub-engine/tsconfig.json',
   'packages/epub-engine/package.json',
   '.env',
-  '.env.*',
 ]
 
 function sourceOnlyWatcher(): Plugin {
+  let watchers: ReturnType<typeof watch>[] = []
+
   return {
     name: 'flow-reader:source-only-watcher',
     apply: 'serve',
@@ -63,16 +64,33 @@ function sourceOnlyWatcher(): Plugin {
         cwd: projectRoot,
         ignoreInitial: true,
       })
+      const environmentRoot = resolve(projectRoot)
+      const environmentWatcher = watch(environmentRoot, {
+        cwd: projectRoot,
+        depth: 0,
+        ignoreInitial: true,
+        ignored: (filePath, stats) => {
+          const absolutePath = resolve(projectRoot, filePath)
+          return (
+            absolutePath !== environmentRoot && (stats?.isDirectory() || !basename(absolutePath).startsWith('.env.'))
+          )
+        },
+      })
       const forwardEvent = (event: 'add' | 'change' | 'unlink', filePath: string) => {
         server.watcher.emit(event, normalizePath(resolve(projectRoot, filePath)))
       }
 
-      sourceWatcher.on('add', (filePath) => forwardEvent('add', filePath))
-      sourceWatcher.on('change', (filePath) => forwardEvent('change', filePath))
-      sourceWatcher.on('unlink', (filePath) => forwardEvent('unlink', filePath))
-      server.httpServer?.once('close', () => {
-        void sourceWatcher.close()
-      })
+      watchers = [sourceWatcher, environmentWatcher]
+      for (const watcher of watchers) {
+        watcher.on('add', (filePath) => forwardEvent('add', filePath))
+        watcher.on('change', (filePath) => forwardEvent('change', filePath))
+        watcher.on('unlink', (filePath) => forwardEvent('unlink', filePath))
+      }
+    },
+    async closeServer() {
+      const closing = watchers
+      watchers = []
+      await Promise.all(closing.map((watcher) => watcher.close()))
     },
   }
 }

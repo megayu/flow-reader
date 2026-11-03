@@ -180,6 +180,76 @@ fn import_single_epub_for_test(storage: &AppStorage, path: &Path) -> Result<Book
         .ok_or_else(|| "EPUB import produced no book".to_string())
 }
 
+#[test]
+fn archive_publication_resolves_exact_names_before_decoded_candidates() {
+    use super::publication::{ArchivePublicationSource, PublicationSource};
+
+    let mut writer = ZipWriter::new(Cursor::new(Vec::new()));
+    for (name, body) in [
+        ("OPS/第一章.xhtml", "unicode"),
+        ("OPS/%E7%AC%AC%E4%B8%80%E7%AB%A0.xhtml", "literal"),
+        ("OPS/第二章.xhtml", "decoded"),
+    ] {
+        writer.start_file(name, SimpleFileOptions::default()).unwrap();
+        writer.write_all(body.as_bytes()).unwrap();
+    }
+    let archive = ZipArchive::new(writer.finish().unwrap()).unwrap();
+    let mut source = ArchivePublicationSource::new(archive);
+    for (path, expected) in [
+        ("OPS/第一章.xhtml", Some("unicode")),
+        ("OPS/%E7%AC%AC%E4%B8%80%E7%AB%A0.xhtml", Some("literal")),
+        ("OPS/%E7%AC%AC%E4%BA%8C%E7%AB%A0.xhtml", Some("decoded")),
+        ("OPS/missing.xhtml", None),
+        ("OPS/%ZZ.xhtml", None),
+    ] {
+        let bytes = source.read_bytes(path, 1024, "chapter");
+        let length = source.byte_length(path);
+        if let Some(expected) = expected {
+            assert_eq!(bytes.unwrap(), expected.as_bytes(), "{path}");
+            assert_eq!(length.unwrap(), expected.len() as u64, "{path}");
+        } else {
+            assert!(bytes.is_err(), "{path}");
+            assert!(length.is_err(), "{path}");
+        }
+    }
+}
+
+#[test]
+fn epub_access_rejects_compression_methods_the_application_cannot_read() {
+    let root = std::env::temp_dir().join(format!(
+        "flow-reader-compression-access-{}-{}",
+        std::process::id(),
+        SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos()
+    ));
+    fs::create_dir_all(&root).unwrap();
+    let path = root.join("input.epub");
+    for method in [0u16, 8, 12, 99] {
+        let mut writer = ZipWriter::new(Cursor::new(Vec::new()));
+        let compression = if method == 8 {
+            CompressionMethod::Deflated
+        } else {
+            CompressionMethod::Stored
+        };
+        writer
+            .start_file(
+                "chapter.xhtml",
+                SimpleFileOptions::default().compression_method(compression),
+            )
+            .unwrap();
+        writer.write_all(b"<p>synthetic chapter</p>").unwrap();
+        let mut bytes = writer.finish().unwrap().into_inner();
+        if !matches!(method, 0 | 8) {
+            let central = bytes.windows(4).position(|window| window == b"PK\x01\x02").unwrap();
+            bytes[8..10].copy_from_slice(&method.to_le_bytes());
+            bytes[central + 10..central + 12].copy_from_slice(&method.to_le_bytes());
+        }
+        fs::write(&path, bytes).unwrap();
+        let result = super::inspect_epub_access(&path);
+        assert_eq!(result.is_ok(), matches!(method, 0 | 8), "method {method}: {result:?}");
+    }
+    fs::remove_dir_all(root).unwrap();
+}
+
 fn import_text_paths_strict_for_test(
     storage: &AppStorage,
     tasks: &TaskService,
@@ -4662,6 +4732,61 @@ fn exports_epub_reuses_original_entries_and_rewrites_changed_files() {
     assert_eq!(image, vec![9u8; 128]);
 
     fs::remove_dir_all(&root).unwrap();
+}
+
+#[test]
+fn reused_epub_entries_preserve_legacy_names_and_non_ascii_comments() {
+    let root = std::env::temp_dir().join(format!(
+        "flow-reader-export-comments-{}-{}",
+        std::process::id(),
+        SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos()
+    ));
+    fs::create_dir_all(&root).unwrap();
+    for legacy_name in [false, true] {
+        let name = if legacy_name { "OEBPS/x.bin" } else { "OEBPS/asset.bin" };
+        let mut writer = ZipWriter::new(Cursor::new(Vec::new()));
+        writer
+            .start_file(
+                "mimetype",
+                SimpleFileOptions::default().compression_method(CompressionMethod::Stored),
+            )
+            .unwrap();
+        writer.write_all(b"application/epub+zip").unwrap();
+        writer
+            .start_file(name, zip::write::FullFileOptions::default().with_file_comment("é"))
+            .unwrap();
+        writer.write_all(b"synthetic binary resource").unwrap();
+        let mut bytes = writer.finish().unwrap().into_inner();
+        let (local, central) = {
+            let mut archive = ZipArchive::new(Cursor::new(&bytes)).unwrap();
+            let entry = archive.by_index(1).unwrap();
+            (entry.header_start() as usize, entry.central_header_start() as usize)
+        };
+        bytes[local + 7] &= !0x08;
+        bytes[central + 9] &= !0x08;
+        let name_len = u16::from_le_bytes(bytes[central + 28..central + 30].try_into().unwrap()) as usize;
+        let extra_len = u16::from_le_bytes(bytes[central + 30..central + 32].try_into().unwrap()) as usize;
+        let comment = central + 46 + name_len + extra_len;
+        bytes[comment..comment + 2].copy_from_slice(&[0x82, 0x82]);
+        if legacy_name {
+            bytes[local + 30 + "OEBPS/".len()] = 0x82;
+            bytes[central + 46 + "OEBPS/".len()] = 0x82;
+        }
+        let original = root.join("original.epub");
+        let unpacked = root.join("unpacked");
+        let output = root.join("export.epub");
+        fs::write(&original, bytes).unwrap();
+        super::unpack_epub(&original, &unpacked).unwrap();
+        write_epub_from_original_and_unpacked(&original, &unpacked, &output).unwrap();
+        let mut archive = ZipArchive::new(fs::File::open(&output).unwrap()).unwrap();
+        let mut entry = archive.by_index(1).unwrap();
+        assert_eq!(entry.name().unwrap(), if legacy_name { "OEBPS/é.bin" } else { name });
+        assert_eq!(entry.comment(), "éé");
+        let mut body = Vec::new();
+        entry.read_to_end(&mut body).unwrap();
+        assert_eq!(body, b"synthetic binary resource");
+    }
+    fs::remove_dir_all(root).unwrap();
 }
 
 #[test]

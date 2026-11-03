@@ -1,3 +1,5 @@
+import { getErrorCode } from '../errorMessage'
+
 import { classifyDictionaryQuery, normalizeDictionaryQuery } from './query'
 import type { DictionaryQuery, DictionaryQueryLanguage, DictionaryResult, SupportedDictionaryLanguage } from './types'
 
@@ -16,6 +18,7 @@ export type DictionarySourceStatus = 'cancelled' | 'empty' | 'error' | 'idle' | 
 
 export interface DictionarySourceState {
   error?: string
+  errorCode?: string
   externalUrl?: string
   providerId: string
   providerName: string
@@ -114,8 +117,10 @@ export class DictionaryCoordinator {
         } catch (error) {
           if (!this.isCurrent(id) || controller.signal.aborted) return
 
+          const errorCode = getErrorCode(error)
           sources = replaceSource(sources, index, {
             error: error instanceof Error ? error.message : String(error),
+            ...(errorCode ? { errorCode } : {}),
             externalUrl: externalUrlFromError(error) ?? provider.externalUrl?.(query!),
             providerId: provider.id,
             providerName: provider.name,

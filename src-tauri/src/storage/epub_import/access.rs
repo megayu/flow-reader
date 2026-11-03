@@ -81,6 +81,16 @@ pub(in crate::storage) fn validate_epub_archive_limits<R: Read + Seek>(
 }
 
 fn validate_epub_entry<R: Read>(file: &zip::read::ZipFile<'_, R>, total_size: &mut u64) -> Result<(), String> {
+    // Opening an entry only reads metadata; unsupported decompressors fail on first read.
+    if !matches!(
+        file.compression(),
+        CompressionMethod::Stored | CompressionMethod::Deflated
+    ) {
+        return Err(format!(
+            "EPUB entry uses an unsupported compression method: {}",
+            file.compression()
+        ));
+    }
     let size = file.size();
     if size > EPUB_MAX_ENTRY_BYTES {
         return Err(format!(

@@ -47,6 +47,7 @@
   "error.deep_link_book_not_found": "연결된 도서가 현재 서재에 없습니다",
   "error.export_failed": "내보내기 실패",
   "error.folder_import_failed": "폴더 가져오기 실패",
+  "error.network_dns": "서비스 주소를 확인할 수 없습니다. 네트워크 또는 DNS 설정을 확인한 후 다시 시도하세요.",
   "error.open_book_directory_failed": "도서 폴더를 열 수 없습니다",
   "error.operation_failed": "{1} 실패",
   "error.reader_navigation_failed": "도서 내 링크로 이동할 수 없습니다",

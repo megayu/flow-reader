@@ -47,6 +47,7 @@
   "error.deep_link_book_not_found": "The linked book is not in this library",
   "error.export_failed": "Export failed",
   "error.folder_import_failed": "Folder import failed",
+  "error.network_dns": "Could not resolve the service address. Check your network or DNS settings and try again.",
   "error.open_book_directory_failed": "Failed to open book folder",
   "error.operation_failed": "{1} failed",
   "error.reader_navigation_failed": "Could not follow book link",

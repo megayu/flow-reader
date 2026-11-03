@@ -305,7 +305,15 @@ pub(super) fn write_epub_from_original_and_unpacked(
 
             if should_copy_original_zip_entry(&relative, &unpacked_path)? {
                 let raw_entry = archive.by_index(index).map_err(|error| error.to_string())?;
-                writer.raw_copy_file(raw_entry).map_err(|error| error.to_string())?;
+                if !raw_entry.comment().is_ascii() && raw_entry.flags().as_u16() & (1 << 11) == 0 {
+                    // Raw copying keeps the legacy-name flag but writes decoded comments as UTF-8.
+                    // Re-encode the name too so both fields use the UTF-8 language-encoding flag.
+                    writer
+                        .raw_copy_file_rename(raw_entry, name)
+                        .map_err(|error| error.to_string())?;
+                } else {
+                    writer.raw_copy_file(raw_entry).map_err(|error| error.to_string())?;
+                }
             } else {
                 write_epub_file(&mut writer, &relative, &unpacked_path, None, stored)?;
             }

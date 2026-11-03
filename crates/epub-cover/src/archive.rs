@@ -52,8 +52,8 @@ pub(crate) fn read_entry<R: Read + Seek>(
     requested_path: &str,
     limit: u64,
 ) -> Result<(Vec<u8>, String), CoverError> {
-    let (raw_name, archive_path) = find_entry(archive, requested_path)?;
-    let entry = archive.by_name(&raw_name)?;
+    let (index, archive_path) = find_entry(archive, requested_path)?;
+    let entry = archive.by_index(index)?;
     let bytes = read_bounded_bytes(entry, limit, archive_path.clone())?;
     Ok((bytes, archive_path))
 }
@@ -77,12 +77,12 @@ pub(crate) fn read_bounded_bytes(
 fn find_entry<R: Read + Seek>(
     archive: &mut ZipArchive<R>,
     requested_path: &str,
-) -> Result<(String, String), CoverError> {
+) -> Result<(usize, String), CoverError> {
     let candidates = path::lookup_candidates(requested_path)?;
 
     for candidate in &candidates {
-        if archive.by_name(candidate).is_ok() {
-            return Ok((candidate.clone(), candidate.clone()));
+        if let Some(index) = archive.index_for_name_raw(candidate.as_bytes()) {
+            return Ok((index, candidate.clone()));
         }
     }
 
@@ -96,7 +96,7 @@ fn find_entry<R: Read + Seek>(
             .iter()
             .any(|candidate| normalized_name.eq_ignore_ascii_case(candidate))
         {
-            return Ok((raw_name, normalized_name));
+            return Ok((index, normalized_name));
         }
     }
 

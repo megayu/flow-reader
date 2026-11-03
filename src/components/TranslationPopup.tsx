@@ -9,6 +9,7 @@ import {
 } from 'lucide-react'
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 
+import { formatErrorMessage, getErrorCode } from '../errorMessage'
 import { useTranslation } from '../hooks/useTranslation'
 import {
   orderedSourceLanguages,
@@ -61,7 +62,7 @@ export function TranslationPopup({
   const [sourceLanguage, setSourceLanguage] = useState(initialSourceLanguage)
   const [targetLanguage, setTargetLanguage] = useState(initialTargetLanguage)
   const [translated, setTranslated] = useState('')
-  const [error, setError] = useState('')
+  const [error, setError] = useState<{ code?: string; message: string }>()
   const [copied, setCopied] = useState(false)
   const [retryCount, setRetryCount] = useState(0)
   const [bodyHeight, setBodyHeight] = useState<number>()
@@ -70,11 +71,12 @@ export function TranslationPopup({
   const resultContentRef = useRef<HTMLDivElement>(null)
   const requestGenerationRef = useRef(0)
   const maxBodyHeight = Math.max(0, maxPopupHeight - 40)
+  const errorMessage = error?.code === 'dns' ? t('error.network_dns') : (error?.message ?? '')
 
   useEffect(() => {
     const controller = new AbortController()
     const generation = ++requestGenerationRef.current
-    setError('')
+    setError(undefined)
     setTranslated('')
     void translateTexts({
       provider,
@@ -87,9 +89,13 @@ export function TranslationPopup({
         if (controller.signal.aborted || generation !== requestGenerationRef.current) return
         setTranslated(results.join('\n\n'))
       })
-      .catch((error: Error) => {
+      .catch((error: unknown) => {
         if (!controller.signal.aborted && generation === requestGenerationRef.current) {
-          setError(error.message)
+          const message =
+            typeof error === 'object' && error !== null && 'message' in error && typeof error.message === 'string'
+              ? error.message
+              : formatErrorMessage(error)
+          setError({ code: getErrorCode(error), message })
         }
       })
     return () => {
@@ -117,9 +123,9 @@ export function TranslationPopup({
     const nextSourceHeight = clamp(available - resultHeight, MIN_SOURCE_HEIGHT, available - MIN_RESULT_HEIGHT)
     setBodyHeight(nextBodyHeight)
     setSourceHeight(nextSourceHeight)
-  }, [error, maxBodyHeight, text, translated])
+  }, [errorMessage, maxBodyHeight, text, translated])
 
-  const copyText = translated || error
+  const copyText = translated || errorMessage
   const languageSelect = (
     value: TranslationSourceLanguage,
     values: TranslationSourceLanguage[],
@@ -227,14 +233,14 @@ export function TranslationPopup({
           }}
         >
           <div ref={resultContentRef}>
-            {!translated && !error && (
+            {!translated && !errorMessage && (
               <div className="text-muted-foreground flex min-h-8 items-center justify-center">
                 <LoaderCircleIcon className="size-4 animate-spin" />
               </div>
             )}
-            {error && (
+            {errorMessage && (
               <div className="text-destructive inline-flex items-center gap-1">
-                <span>{error}</span>
+                <span>{errorMessage}</span>
                 <IconButton
                   Icon={RefreshCwIcon}
                   className="text-muted-foreground hover:text-foreground size-6 shrink-0"

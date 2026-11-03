@@ -96,7 +96,11 @@ impl AppStorage {
         let mut archive = self.open_archive_resource(book_id)?;
         let mut last_error = "EPUB entry not found".to_string();
         for candidate in zip_path_candidates(path) {
-            match archive.by_name(&candidate) {
+            let entry = archive
+                .index_for_name_raw(candidate.as_bytes())
+                .ok_or(zip::result::ZipError::FileNotFound)
+                .and_then(|index| archive.by_index(index));
+            match entry {
                 Ok(mut entry) => {
                     let mut bytes = Vec::with_capacity(entry.size().try_into().unwrap_or_default());
                     entry.read_to_end(&mut bytes).map_err(|error| error.to_string())?;

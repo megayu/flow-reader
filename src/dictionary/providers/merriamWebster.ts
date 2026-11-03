@@ -1,3 +1,4 @@
+import { getErrorCode } from '../../errorMessage'
 import type { DictionaryProvider } from '../coordinator'
 import { fetchMerriamWebster } from '../native'
 import { beginDictionarySession } from '../session'
@@ -20,12 +21,14 @@ export class MerriamWebsterParseError extends Error {
 }
 
 class MerriamWebsterLookupError extends Error {
+  code?: string
   externalUrl: string
 
-  constructor(message: string, externalUrl: string) {
+  constructor(message: string, externalUrl: string, code?: string) {
     super(message)
     this.name = 'MerriamWebsterLookupError'
     this.externalUrl = externalUrl
+    this.code = code
   }
 }
 
@@ -53,7 +56,7 @@ export function createMerriamWebsterProvider(apiKey: string): DictionaryProvider
           throw error
         }
         const message = error instanceof Error ? error.message : String(error)
-        throw new MerriamWebsterLookupError(message, externalUrl)
+        throw new MerriamWebsterLookupError(message, externalUrl, getErrorCode(error))
       } finally {
         session.detachCancellation()
       }

@@ -47,6 +47,7 @@
   "error.deep_link_book_not_found": "O livro vinculado não está nesta biblioteca",
   "error.export_failed": "Falha na exportação",
   "error.folder_import_failed": "Falha ao importar pasta",
+  "error.network_dns": "Não foi possível resolver o endereço do serviço. Verifique as configurações de rede ou DNS e tente novamente.",
   "error.open_book_directory_failed": "Não foi possível abrir a pasta do livro",
   "error.operation_failed": "Falha: {1}",
   "error.reader_navigation_failed": "Não foi possível seguir o link do livro",

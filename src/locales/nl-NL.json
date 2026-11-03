@@ -47,6 +47,7 @@
   "error.deep_link_book_not_found": "Het gekoppelde boek bevindt zich niet in deze bibliotheek",
   "error.export_failed": "Exporteren mislukt",
   "error.folder_import_failed": "Map importeren mislukt",
+  "error.network_dns": "Het serviceadres kan niet worden gevonden. Controleer uw netwerk- of DNS-instellingen en probeer het opnieuw.",
   "error.open_book_directory_failed": "Kan de map van het boek niet openen",
   "error.operation_failed": "{1} mislukt",
   "error.reader_navigation_failed": "Kan de boeklink niet volgen",

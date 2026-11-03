@@ -75,7 +75,12 @@ impl<R: Read + Seek> PublicationSource for ArchivePublicationSource<R> {
     fn read_bytes(&mut self, path: &str, limit: u64, description: &str) -> Result<Vec<u8>, String> {
         let mut last_error = "EPUB entry not found".to_string();
         for candidate in zip_path_candidates(path) {
-            match self.archive.by_name(&candidate) {
+            let entry = self
+                .archive
+                .index_for_name_raw(candidate.as_bytes())
+                .ok_or(zip::result::ZipError::FileNotFound)
+                .and_then(|index| self.archive.by_index(index));
+            match entry {
                 Ok(file) => return read_bounded_bytes(file, limit, description),
                 Err(error) => last_error = error.to_string(),
             }
@@ -86,7 +91,12 @@ impl<R: Read + Seek> PublicationSource for ArchivePublicationSource<R> {
     fn byte_length(&mut self, path: &str) -> Result<u64, String> {
         let mut last_error = "EPUB entry not found".to_string();
         for candidate in zip_path_candidates(path) {
-            match self.archive.by_name(&candidate) {
+            let entry = self
+                .archive
+                .index_for_name_raw(candidate.as_bytes())
+                .ok_or(zip::result::ZipError::FileNotFound)
+                .and_then(|index| self.archive.by_index(index));
+            match entry {
                 Ok(entry) => return Ok(entry.size()),
                 Err(error) => last_error = error.to_string(),
             }
