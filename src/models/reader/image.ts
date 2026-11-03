@@ -1,4 +1,7 @@
+import { originalImageResourceUrl } from '@flow/epub-engine'
+
 export function normalizeImageSource(src: string) {
+  src = originalImageResourceUrl(src)
   try {
     return decodeURI(src)
   } catch {

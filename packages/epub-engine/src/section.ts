@@ -174,6 +174,7 @@ function preserveSvgXmlStylesheets(doc: Document, contents: Element) {
  * @param {object} hooks hooks for serialize and content
  */
 class Section {
+  imageResources?: import('./image-resources').ImageResourceScope
   declare idref: string | null
   declare linear: boolean
   declare properties: string[]

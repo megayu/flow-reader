@@ -1664,6 +1664,7 @@ export class BookTab {
   destroy() {
     if (this.destroyPromise) return this.destroyPromise
 
+    this.epub?.resources?.imageResources.destroy()
     this.searchController.cancel()
     this.renderGeneration++
     this.destroyPromise = this.destroyAfterFlush()

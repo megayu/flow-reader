@@ -15,6 +15,7 @@ mod atomic_file;
 mod diagnostics;
 pub mod dictionary;
 mod file_manager;
+mod memory_pressure;
 mod storage;
 mod storage_activity;
 mod tasks;
@@ -418,6 +419,9 @@ pub fn run() {
             app.manage(dictionary_registry);
             app.manage(dictionary::session::DictionarySessionManager::default());
             app.manage(storage.clone());
+            if let Err(error) = memory_pressure::start(app.handle()) {
+                eprintln!("Failed to subscribe to OS memory pressure: {error}");
+            }
             storage.start_derived_cache_maintenance();
 
             if let Some(window) = app.get_webview_window("main") {
@@ -537,6 +541,9 @@ pub fn run() {
         .build(tauri::generate_context!())
         .expect("error while building Flow")
         .run(|_app, _event| {
+            if matches!(_event, tauri::RunEvent::Exit) {
+                memory_pressure::stop(_app);
+            }
             if let tauri::RunEvent::ExitRequested { api, code, .. } = &_event
                 && storage_activity::is_migrating()
                 && *code != Some(tauri::RESTART_EXIT_CODE)

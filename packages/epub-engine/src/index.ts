@@ -14,6 +14,7 @@ import Rendition from './public-rendition'
 
 export default ePub
 export { Book, EpubCFI, Rendition, Contents, Layout }
+export { releaseImageResourceCaches, originalImageResourceUrl } from './image-resources'
 
 export type { Location } from './rendition'
 export type { NavItem } from './navigation'

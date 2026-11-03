@@ -1,4 +1,5 @@
 import type Section from '../../section'
+import type { ImageResourceLease } from '../../image-resources'
 import type { SectionRequest } from '../../section'
 import type Layout from '../../layout'
 import type { Deferred, LegacyWindow } from '../../utils/core'
@@ -1273,11 +1274,22 @@ class IframeView extends EventEmitter<ViewEvents> {
     this.elementBounds = bounds(this.element)
   }
 
-  load(contents: string) {
+  private imageResourceLease?: ImageResourceLease
+
+  async load(contents: string) {
+    const lease = await this.section.imageResources?.prepare(contents)
+    if (this.destroyed) {
+      lease?.release()
+      throw new Error('Iframe view destroyed before image resources loaded')
+    }
+    this.imageResourceLease?.release()
+    this.imageResourceLease = lease
+    contents = lease?.content ?? contents
     var loading = new defer<Contents>()
     var loaded = loading.promise
 
     if (!this.iframe) {
+      lease?.release()
       loading.reject(new Error('No Iframe Available'))
       return loaded
     }
@@ -1288,6 +1300,7 @@ class IframeView extends EventEmitter<ViewEvents> {
         if (this._loading === loading) this._loading = undefined
       },
       () => {
+        lease?.release()
         if (this._loading === loading) this._loading = undefined
       },
     )
@@ -1322,6 +1335,7 @@ class IframeView extends EventEmitter<ViewEvents> {
   }
 
   onLoad(event: Event, promise: Deferred<Contents>) {
+    this.imageResourceLease?.loaded()
     this.window = this.iframe!.contentWindow as LegacyWindow
     this.document = this.iframe!.contentDocument
 
@@ -1793,6 +1807,8 @@ class IframeView extends EventEmitter<ViewEvents> {
   destroy() {
     if (this.destroyed) return
     this.destroyed = true
+    this.imageResourceLease?.release()
+    this.imageResourceLease = undefined
     if (this.pane) this.pane.beginBatch()
 
     for (let cfiRange in this.highlights) {

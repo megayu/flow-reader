@@ -17,6 +17,14 @@ start of rejected approaches. Other entries cover reader interactions.
 
 ## Retained Approaches
 
+### Book-owned original image Blob reuse
+
+- Change: resolve local raster image references to shared Blob URLs at iframe load, leaving canonical section documents intact. Bound registered cached Blob URLs globally to 64 MiB/128 entries, including retired URLs held by loading views, coalesce same-source requests, and revoke on book close, capacity eviction or native OS memory warnings. Tab activation, library mode and window backgrounding preserve reuse. Loaded images survive URL retirement; in-flight views retain loading leases until completion.
+- Measured effect: matched Windows `tauri-release` runs with a 650-section authored EPUB reusing one 3840×2160, 9 MB PNG used a 1280×800 client area at DPR 1.5. Twenty sequential/distant chapter targets per side excluded the first five as warmup. Operation p50/p95 decreased 70.9%/72.1%; time through two subsequent animation frames decreased 86.1%/84.3%. The image was fetched once in the optimized run. Full-run long tasks decreased 95.2%, including cold work.
+- Tradeoff: first acquisition still reads and decodes the original. The single startup image sample increased 34.6% through two frames; a separate alternating, explicitly emptied-cache control had overlapping ranges. Retain for repeated chapter images; do not claim cold-load improvement or a screenshot-verified first pixel.
+- Release evidence: close (including a pending request) cleared reusable entries, pending work and registered image URLs immediately. Injecting the production memory-warning event released about 10 MB of cached image bytes. Chromium and Playwright WebKit preserved identical displayed pixels after revocation. Capacity eviction and tab/library/minimized-window retention were checked separately.
+- Limits: actual system-wide low memory was not induced. macOS/Linux native subscriptions were not run on this Windows host. Blob registration release is not immediate return of all WebView private memory; both original and optimized clients retained memory across close cycles. Loaded browser resources and transient fetch bodies are separate from the registered-Blob budget. Admission falls back to native URLs if loading leases prevent eviction. The timing evidence predates this capacity-accounting correction; it is not a new measurement of the corrected build.
+
 ### Resume page mapping from the current spread
 
 - Change: resolve page start and end in one DOM walk and retain only the current page's scan anchor and CFI pair per contents document. Forward and backward turns resume near that anchor. Invalidate the state after layout, content-size, image, or font changes.

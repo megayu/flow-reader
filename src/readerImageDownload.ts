@@ -1,5 +1,7 @@
 import { invoke } from '@tauri-apps/api/core'
 
+import { originalImageResourceUrl } from '@flow/epub-engine'
+
 import { sanitizeFilename } from './utils'
 
 const IMAGE_EXTENSION_BY_MIME_TYPE: Readonly<Record<string, string>> = {
@@ -13,6 +15,7 @@ const IMAGE_EXTENSION_BY_MIME_TYPE: Readonly<Record<string, string>> = {
 }
 
 export async function downloadReaderImage(bookId: string, src: string) {
+  src = originalImageResourceUrl(src)
   const response = src.startsWith('blob:') ? await loadReaderImage(src) : undefined
   const suggestedFilename = readerImageFilename(src, response?.headers.get('content-type'))
   const extension = filenameExtension(suggestedFilename)

@@ -4,6 +4,8 @@ import { invoke } from '@tauri-apps/api/core'
 import { getCurrentWebviewWindow } from '@tauri-apps/api/webviewWindow'
 import { createRoot } from 'react-dom/client'
 
+import { releaseImageResourceCaches } from '@flow/epub-engine'
+
 import { FlowReader } from './app/FlowReader'
 import { installReloadShortcut, installSettingsShortcut } from './keyboard'
 import { reader } from './models/reader'
@@ -46,6 +48,7 @@ async function handleAppCloseRequested() {
 }
 
 async function start() {
+  await getCurrentWebviewWindow().listen('flow-memory-pressure', releaseImageResourceCaches)
   await getCurrentWebviewWindow().listen('flow-app-close-requested', handleAppCloseRequested)
   await windowUiStateReady
 

@@ -1,5 +1,7 @@
 import { type RefObject, useCallback, useEffect, useEffectEvent, useLayoutEffect, useRef, useState } from 'react'
 
+import { originalImageResourceUrl } from '@flow/epub-engine'
+
 import { notePopoverClass } from '../../bodyText'
 import { isSupportedExternalUrl, openSupportedExternalUrl } from '../../externalLink'
 import { installReloadShortcut } from '../../keyboard'
@@ -122,7 +124,7 @@ export function useBookPaneFrameContent({
     }
     setImagePreview({
       key: (imagePreviewOpenKey.current += 1),
-      src,
+      src: originalImageResourceUrl(src),
     })
   }, [])
 

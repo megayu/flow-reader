@@ -32,6 +32,7 @@ import { resolveDirectFallback } from './utils/fallback'
 import { decodeHrefPathSegments, encodeHrefPathSegments, stripHrefSuffix } from './utils/href'
 import { substitute } from './utils/replacements'
 import Url from './utils/url'
+import { ImageResourceScope } from './image-resources'
 
 /**
  * Handle Package Resources
@@ -45,6 +46,7 @@ import Url from './utils/url'
  * @param {string} [options.containerRootUrl]
  */
 class Resources {
+  readonly imageResources = new ImageResourceScope()
   declare settings: ResourceOptions & { replacements: string }
   declare ownedBlobUrls: Set<string>
   declare manifest: PackagingManifestObject
@@ -685,6 +687,7 @@ class Resources {
   }
 
   destroy() {
+    this.imageResources.destroy()
     if (this.ownedBlobUrls) {
       this.ownedBlobUrls.forEach((url) => {
         try {

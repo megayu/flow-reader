@@ -618,6 +618,10 @@ class Book extends EventEmitter<{ openFailed: [Error] }> {
         this.settings.replacements || (this.archived ? 'blobUrl' : 'none'),
     })
 
+    this.spine.spineItems.forEach((section) => {
+      section.imageResources = this.resources.imageResources
+    })
+
     if (!this.archived) {
       this.spine.hooks.content.register(
         this.resources.resolveSectionResourceUrls.bind(this.resources),
