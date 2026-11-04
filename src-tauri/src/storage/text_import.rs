@@ -1217,6 +1217,10 @@ fn materialize_text_publication(
     .map_err(|error| error.to_string())?;
 
     fs::write(styles_dir.join("txt.css"), text_import_css()).map_err(|error| error.to_string())?;
+    if document.sections.iter().any(|section| section.is_group) {
+        fs::write(styles_dir.join("volumn-bg.css"), text_import_volume_background_css())
+            .map_err(|error| error.to_string())?;
+    }
     if let Some(cover) = cover {
         write_text_cover_to_unpacked(storage, id, cover)?;
     }
@@ -1282,16 +1286,6 @@ body {
   min-height: 100vh;
 }
 
-/* Examples: use one background image for every volume, or override one volume.
-.flow-txt-volume-page {
-  background: url("../Images/volume.jpg") center / cover no-repeat;
-}
-
-.flow-txt-volume-page.v1 {
-  background: url("../Images/volume-1.jpg") center / cover no-repeat;
-}
-*/
-
 .flow-txt-volume,
 .flow-txt-chapter {
   font-weight: 700;
@@ -1315,20 +1309,26 @@ body {
 }
 
 .flow-txt-chapter {
-  margin: 1em 0 1.4em;
+  margin: 1em 0 0.75em;
   font-size: 1.25em;
 }
 
-/* Examples: use one title image for every chapter, or override one volume.
-.flow-txt-chapter::before {
-  content: "";
-  display: block;
-  height: 5em;
-  margin-bottom: 1em;
-  background: url("../Images/chapter.png") center / contain no-repeat;
+/* Optional chapter artwork.
+Add images to Images/ and the OPF manifest, then copy the desired rules outside this comment.
+Use has-chapter-art on pages with artwork; v1, v2, etc. select per-volume images.
+
+.has-chapter-art .flow-txt-chapter {
+  padding-top: 37.5%;
+  padding-top: calc(37.5% + 1em);
+  padding-top: calc(min(37.5%, 10em) + 1em);
+  background-position: center top;
+  background-size: 90% auto;
+  background-size: min(90%, 24em) auto;
+  background-repeat: no-repeat;
+  background-image: url("../Images/chapter.png");
 }
 
-.flow-txt-chapter-page.v1 .flow-txt-chapter::before {
+.has-chapter-art.v1 .flow-txt-chapter {
   background-image: url("../Images/chapter-1.png");
 }
 */
@@ -1356,6 +1356,25 @@ body {
   text-align: center !important;
   text-indent: 0 !important;
 }
+"#
+}
+
+fn text_import_volume_background_css() -> &'static str {
+    r#"/* Optional volume backgrounds. Link this file from volume pages only.
+Add images to Images/ and the OPF manifest, then copy the desired rules outside this comment.
+Use a shared image or override it for v1, v2, etc.
+
+.flow-txt-volume-page {
+  background-position: center;
+  background-size: cover;
+  background-repeat: no-repeat;
+  background-image: url("../Images/volume.jpg");
+}
+
+.flow-txt-volume-page.v1 {
+  background-image: url("../Images/volume-1.jpg");
+}
+*/
 "#
 }
 
@@ -1437,16 +1456,26 @@ pub(super) fn text_section_xhtml_for_volume(section: &TextImportSection, volume_
 <html xmlns="http://www.w3.org/1999/xhtml" lang="zh-CN">
 <head>
   <title>{}</title>
-  <link rel="stylesheet" type="text/css" href="../Styles/txt.css"/>
+  <link rel="stylesheet" type="text/css" href="../Styles/txt.css"/>{}
 </head>
-<body class="{}{}">
+<body class="{}{}{}">
 {}</body>
 </html>"#,
         escape_xml(&heading),
         if section.is_group {
+            "\n  <link rel=\"stylesheet\" type=\"text/css\" href=\"../Styles/volumn-bg.css\"/>"
+        } else {
+            ""
+        },
+        if section.is_group {
             "flow-txt-volume-page"
         } else {
             "flow-txt-chapter-page"
+        },
+        if !section.is_group && volume_number.is_some() {
+            " has-chapter-art"
+        } else {
+            ""
         },
         volume_number.map(|number| format!(" v{number}")).unwrap_or_default(),
         body
@@ -1553,7 +1582,7 @@ fn text_content_opf_with_metadata(
   </metadata>
   <manifest>
     <item id="nav" href="nav.xhtml" media-type="application/xhtml+xml" properties="nav"/>
-    <item id="style" href="Styles/txt.css" media-type="text/css"/>
+    <item id="style" href="Styles/txt.css" media-type="text/css"/>{}
     <item id="cover-image" href="Images/cover.svg" media-type="image/svg+xml" properties="cover-image"/>
     {}
   </manifest>
@@ -1565,6 +1594,11 @@ fn text_content_opf_with_metadata(
         escape_xml(title),
         escape_xml(creator),
         escape_xml(encoding_label),
+        if document.sections.iter().any(|section| section.is_group) {
+            "\n    <item id=\"volumn-bg\" href=\"Styles/volumn-bg.css\" media-type=\"text/css\"/>"
+        } else {
+            ""
+        },
         manifest_items,
         spine_items
     )

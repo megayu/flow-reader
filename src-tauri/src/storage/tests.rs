@@ -3225,7 +3225,10 @@ fn creates_standalone_centered_group_section_before_its_first_chapter() {
     assert!(document.sections[0].paragraphs.is_empty());
     assert_eq!(document.sections[1].paragraphs, vec!["示例正文。".to_string()]);
     assert!(group.contains(r#"<body class="flow-txt-volume-page v1">"#));
-    assert!(chapter.contains(r#"<body class="flow-txt-chapter-page v1">"#));
+    assert!(chapter.contains(r#"<body class="flow-txt-chapter-page has-chapter-art v1">"#));
+    assert!(group.contains(r#"href="../Styles/volumn-bg.css""#));
+    assert!(!chapter.contains("volumn-bg.css"));
+    assert!(opf.contains(r#"href="Styles/volumn-bg.css" media-type="text/css""#));
     assert!(group.contains(
         "  <h1 class=\"flow-txt-volume\"><span class=\"flow-txt-volume-label\">第一卷</span> <span class=\"flow-txt-volume-title\">分组甲</span></h1>\n"
     ));
