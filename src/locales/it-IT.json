@@ -279,6 +279,8 @@
   "settings.show_library_in_toc.description": "Mostra il pulsante libreria sopra l'indice del libro per passare velocemente da un libro all'altro.",
   "settings.show_recent_books": "Mostra libri recenti",
   "settings.show_recent_books.description": "Tiene traccia dei libri letti di recente e li mostra in cima alla libreria.",
+  "settings.show_toc_chapter_count": "Mostra il totale dei sottocapitoli",
+  "settings.show_toc_chapter_count.description": "Mostra a destra di ogni voce con sottocapitoli nell’indice il totale dei sottocapitoli di tutti i livelli.",
   "settings.source_storage": "Usa direttamente i file originali",
   "settings.source_storage.description": "Non salva copie durante l'importazione per risparmiare spazio. Se i file originali cambiano e la modifica degli EPUB è disattivata, i libri non saranno più disponibili. Si applica solo alle nuove importazioni.",
   "settings.source_storage.txt_copy": "Conserva copie TXT",

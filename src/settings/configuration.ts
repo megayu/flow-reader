@@ -25,6 +25,7 @@ export interface Settings extends TypographyConfiguration {
   hideEndnotes?: boolean
   restoreLastReadingOnStartup?: boolean
   showLibraryInToc?: boolean
+  showTocChapterCount?: boolean
   showRecentBooks?: boolean
   showModifiedBookExportIndicator?: boolean
   defaultEpubMode?: EpubContentMode
@@ -152,6 +153,7 @@ export const defaultSettings: Settings = {
   hideEndnotes: false,
   restoreLastReadingOnStartup: false,
   showLibraryInToc: false,
+  showTocChapterCount: false,
   showRecentBooks: false,
   showModifiedBookExportIndicator: true,
   defaultEpubMode: 'archive',

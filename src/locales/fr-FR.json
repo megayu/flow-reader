@@ -279,6 +279,8 @@
   "settings.show_library_in_toc.description": "Affiche un bouton de bibliothèque au-dessus de la table des matières pour changer rapidement de livre.",
   "settings.show_recent_books": "Afficher les lectures récentes",
   "settings.show_recent_books.description": "Conserve les livres récemment lus et les affiche en haut de la bibliothèque.",
+  "settings.show_toc_chapter_count": "Afficher le total des sous-chapitres",
+  "settings.show_toc_chapter_count.description": "Affiche à droite de chaque entrée parente de la table des matières le nombre total de sous-chapitres de tous les niveaux.",
   "settings.source_storage": "Utiliser directement les fichiers d'origine",
   "settings.source_storage.description": "Aucune copie n'est conservée lors de l'importation afin d'économiser de l'espace. Si les fichiers d'origine changent et que la modification des EPUB est désactivée, les livres ne seront plus disponibles. S'applique uniquement aux nouvelles importations.",
   "settings.source_storage.txt_copy": "Conserver des copies TXT",

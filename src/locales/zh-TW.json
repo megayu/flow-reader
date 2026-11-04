@@ -279,6 +279,8 @@
   "settings.show_library_in_toc.description": "在書籍目錄上方顯示書架，方便快速切換書籍。",
   "settings.show_recent_books": "顯示最近閱讀",
   "settings.show_recent_books.description": "記錄最近閱讀的書籍，並顯示在書架頂部。",
+  "settings.show_toc_chapter_count": "顯示子章節總數",
+  "settings.show_toc_chapter_count.description": "在目錄中有子章節的項目右側顯示其所有層級的子章節總數。",
   "settings.source_storage": "直接使用原始檔案",
   "settings.source_storage.description": "匯入時不儲存副本以節省空間。原始檔案變更且關閉 EPUB 編輯時，書籍將無法開啟。僅對新匯入書籍生效。",
   "settings.source_storage.txt_copy": "保留 TXT 副本",

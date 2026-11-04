@@ -9,7 +9,8 @@ import { LIST_ITEM_SIZE, useList } from '@/hooks/useList'
 import { useTranslation } from '@/hooks/useTranslation'
 import { type BookTab, completeTabOpen, type INavItem, reader, useReaderSnapshot } from '@/models/reader'
 import { sameHref } from '@/noteLinks'
-import { useSetViewMode, useShowLibraryInTocValue } from '@/state'
+import { getTocDescendantCounts } from '@/reader/tocCounts'
+import { useAppStore, useSetViewMode, useShowLibraryInTocValue } from '@/state'
 import { backgroundClassNames } from '@/styles/theme'
 
 import { AppTooltip } from '../AppTooltip'
@@ -180,6 +181,8 @@ const BookTocPane: React.FC<BookTocPaneProps> = ({ active, tab }) => {
   const t = useTranslation()
   const tabSnapshot = useSnapshot(tab)
   const toc = tab.nav?.toc as INavItem[] | undefined
+  const showChapterCount = useAppStore((state) => state.settings.showTocChapterCount === true)
+  const chapterCounts = showChapterCount && toc ? getTocDescendantCounts(toc) : undefined
   const tocVersion = tabSnapshot.tocVersion
   const rows = useMemo(() => {
     void tocVersion
@@ -267,6 +270,7 @@ const BookTocPane: React.FC<BookTocPaneProps> = ({ active, tab }) => {
                 active={active}
                 activeClassName={backgroundClassNames.rowActiveClassName}
                 depth={row?.depth ?? 1}
+                chapterCount={item ? chapterCounts?.get(item) : undefined}
                 item={item}
                 itemExpanded={!!item?.expanded}
                 itemLabel={item?.label ?? ''}
@@ -285,6 +289,7 @@ interface TocRowProps {
   active: boolean
   activeClassName: string
   depth: number
+  chapterCount?: number
   item?: INavItem
   itemExpanded: boolean
   itemLabel: string
@@ -292,7 +297,7 @@ interface TocRowProps {
   emptyLabel: string
 }
 const TocRow: React.FC<TocRowProps> = memo(
-  ({ active, activeClassName, depth, item, itemExpanded, itemLabel, tab, emptyLabel }) => {
+  ({ active, activeClassName, depth, chapterCount, item, itemExpanded, itemLabel, tab, emptyLabel }) => {
     if (!item) return null
     const { subitems, href = '' } = item
     const hasSubitems = !!subitems?.length
@@ -336,6 +341,8 @@ const TocRow: React.FC<TocRowProps> = memo(
         emptyLabel={emptyLabel}
         expanded={itemExpanded}
         label={title}
+        badge={!!chapterCount}
+        badgeCount={chapterCount}
         onClick={handleClick}
         subitems={subitems}
         title={title || undefined}

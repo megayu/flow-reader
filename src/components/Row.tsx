@@ -28,6 +28,7 @@ interface RowProps extends ComponentProps<'div'> {
   toggle?: () => void
   onDelete?: () => void
   badge?: boolean
+  badgeCount?: number
   tooltipContentStyle?: CSSProperties
 }
 export const Row: React.FC<RowProps> = ({
@@ -47,6 +48,7 @@ export const Row: React.FC<RowProps> = ({
   className,
   children,
   badge,
+  badgeCount,
   onClick,
   onDelete,
   onPointerDown,
@@ -55,6 +57,7 @@ export const Row: React.FC<RowProps> = ({
   ...props
 }) => {
   const childCount = subitems?.length
+  const count = badgeCount ?? childCount
   const t = children || label || title
   const tooltip = typeof title === 'string' ? title : undefined
   const indent = Math.max(0, depth - 1) * TREE_INDENT_SIZE
@@ -119,10 +122,10 @@ export const Row: React.FC<RowProps> = ({
           </span>
         </span>
       </div>
-      <div className="relative z-10 ml-auto flex h-full items-center">
-        {badge && childCount && (
+      <div className="relative z-10 ml-auto flex h-full shrink-0 items-center">
+        {badge && !!count && (
           <div className="mr-1 flex h-5 min-w-5 shrink-0 items-center justify-center rounded-full bg-(--flow-bg-control) px-1 text-sm leading-none text-(--flow-text-muted) ring-1 ring-(--flow-border) ring-inset">
-            {childCount}
+            {count}
           </div>
         )}
         {onDelete && (

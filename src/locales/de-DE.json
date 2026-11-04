@@ -279,6 +279,8 @@
   "settings.show_library_in_toc.description": "Zeigt eine Bibliotheksschaltfläche über dem Inhaltsverzeichnis für schnellen Buchwechsel.",
   "settings.show_recent_books": "Zuletzt gelesene Bücher anzeigen",
   "settings.show_recent_books.description": "Führt Buch über zuletzt gelesene Titel und zeigt diese oben in der Bibliothek an.",
+  "settings.show_toc_chapter_count": "Anzahl der Unterkapitel anzeigen",
+  "settings.show_toc_chapter_count.description": "Zeigt rechts neben übergeordneten Inhaltsverzeichniseinträgen die Gesamtzahl ihrer Unterkapitel auf allen Ebenen.",
   "settings.source_storage": "Originaldateien direkt verwenden",
   "settings.source_storage.description": "Beim Import werden keine Kopien angelegt, um Speicherplatz zu sparen. Wenn sich die Originaldateien ändern und die EPUB-Bearbeitung deaktiviert ist, können die Bücher nicht mehr geöffnet werden. Gilt nur für neue Importe.",
   "settings.source_storage.txt_copy": "TXT-Kopien aufbewahren",
