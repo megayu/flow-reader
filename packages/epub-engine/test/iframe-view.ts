@@ -1,6 +1,6 @@
 import type PageBackgrounds from '../src/page-backgrounds'
 import type Section from '../src/section'
-import type Layout from '../src/layout'
+import Layout from '../src/layout'
 import Contents from '../src/contents'
 import { createContentZoomCss } from '../src/content-zoom'
 import type { LegacyWindow } from '../src/utils/core'
@@ -300,6 +300,52 @@ describe('IframeView vertical writing pagination', function () {
 })
 
 describe('IframeView first page positioning', function () {
+  it('fits overflowing leading whitespace after pagination without collapsing real content pages', async function () {
+    for (const tag of ['h1', 'div']) {
+      const layout = new Layout({ layout: 'reflowable', spread: 'auto' })
+      layout.calculate(1373, 906, 48)
+      const view = new IframeView(double<Section>({
+        index: 0,
+        cfiBase: '/6/2',
+        render: async () => `<!doctype html><html><head><style>
+          body { font-size: 20px; }
+          .spaced { margin: 155% 0 0; font-size: 20px; line-height: 140%; text-align: center; }
+          span { font-size: 32px; }
+        </style></head><body><${tag} class="spaced">Part One<br/><span>Sample title</span></${tag}></body></html>`,
+      }), {
+        layout, width: 1373, height: 906,
+        axis: 'horizontal', direction: 'ltr', flow: 'paginated',
+      })
+      document.body.appendChild(view.element)
+      try {
+        await view.render(() => undefined!)
+        await view.document!.fonts.ready
+        for (const [width, height] of [[1373, 906], [2226, 1280], [1000, 780], [1000, 900], [1373, 906]]) {
+          layout.calculate(width!, height!, 48)
+          view.lockedWidth = width!
+          view.lockedHeight = height!
+          view.setLayout(layout)
+          const rect = view.contentBounds()!
+          assert.equal(view._contentPageCount, 1, 'leading whitespace must not require another content page')
+          assert.isAtLeast(rect.left, 0)
+          assert.isAtMost(rect.right, layout.pageWidth)
+          assert.isAtLeast(rect.top, height! * 0.6, 'overflowing leading whitespace keeps content toward the bottom')
+          assert.isAtMost(rect.bottom, height!, 'all text remains visible')
+          if (height === 900) {
+            assert.closeTo(view.document!.body.firstElementChild!.getBoundingClientRect().top, 710.6, 1, 'restore authored spacing when it fits')
+          }
+        }
+        const block = view.document!.body.firstElementChild!
+        block.textContent = 'Synthetic body text with real content spanning pages. '.repeat(1000)
+        view.refreshContents()
+        assert.isAbove(view._contentPageCount!, 1, 'real text overflow retains pagination')
+      } finally {
+        view.destroy()
+        view.element.remove()
+      }
+    }
+  })
+
   it('centers clipped first-page content for single-page sections', function () {
     const view = createView({
       rect: { left: 300, right: 650, top: 0, bottom: 100 },

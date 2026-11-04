@@ -55,6 +55,7 @@ type StoredMark = {
 type Rect = { left: number; right: number; top: number; bottom: number }
 type ContentRangeSummary = {
   bounds: Rect
+  firstPageTop: number
   crossesPageBoundary: boolean
   compactInFirstPage: boolean
   compactNearPageBoundary: boolean
@@ -207,6 +208,13 @@ class IframeView extends EventEmitter<ViewEvents> {
   declare lockedWidth: number | undefined
   declare lockedHeight: number | undefined
   declare _singlePageFirstPageOffset: number | undefined
+  private leadingWhitespaceCorrection?: {
+    element: HTMLElement
+    margin: string
+    marginPriority: string
+    translate: string
+    translatePriority: string
+  }
   declare _expanding: boolean | undefined
   declare prevBounds: ViewResize | undefined
   declare blobUrl: string | undefined
@@ -652,6 +660,7 @@ class IframeView extends EventEmitter<ViewEvents> {
             bottom: rect.bottom,
           },
           crossesPageBoundary: false,
+          firstPageTop: Infinity,
           compactInFirstPage: false,
           compactNearPageBoundary: false,
           startsInsideSecondPage: false,
@@ -663,6 +672,9 @@ class IframeView extends EventEmitter<ViewEvents> {
         summary.bounds.bottom = Math.max(summary.bounds.bottom, rect.bottom)
       }
 
+      if (left < pageWidth - threshold) {
+        summary.firstPageTop = Math.min(summary.firstPageTop, rect.top)
+      }
       if (left < pageWidth - threshold && right > pageWidth + threshold) {
         summary.crossesPageBoundary = true
       }
@@ -733,7 +745,7 @@ class IframeView extends EventEmitter<ViewEvents> {
     }
 
     if (summary.startsInsideSecondPage) {
-      return false
+      return this.normalizeLeadingWhitespaceAfterPagination(summary.bounds, summary.firstPageTop)
     }
 
     let rect = summary.bounds
@@ -764,6 +776,71 @@ class IframeView extends EventEmitter<ViewEvents> {
     this._singlePageFirstPageOffset = undefined
   }
 
+  private restoreLeadingWhitespace() {
+    const saved = this.leadingWhitespaceCorrection
+    if (!saved) return
+    saved.element.style.setProperty('margin-top', saved.margin, saved.marginPriority)
+    saved.element.style.setProperty('translate', saved.translate, saved.translatePriority)
+    this.leadingWhitespaceCorrection = undefined
+    this._needsReframe = true
+  }
+
+  private normalizeLeadingWhitespaceAfterPagination(bounds: Rect, firstPageTop = bounds.top) {
+    const contents = this.contents
+    const root = contents?.content
+    const pageWidth = this.layout.pageWidth
+    const height = this.lockedHeight || this.layout.height
+    if (
+      !root || !contents?.window || !height ||
+      this.settings.flow !== 'paginated' || this.settings.direction !== 'ltr' ||
+      this.writingMode !== 'horizontal-tb' ||
+      bounds.right <= pageWidth + this.pageBoundaryThreshold(pageWidth) ||
+      (bounds.left < pageWidth && firstPageTop < height / 2) ||
+      root.childElementCount !== 1
+    ) return false
+
+    const block = root.firstElementChild as HTMLElement
+    const fragments = block.getClientRects()
+    const first = fragments[0]
+    // A normal first-page start is real pagination, not leading blank space.
+    if (!first || (first.left < pageWidth && first.top < height / 2)) return false
+    const style = contents.window.getComputedStyle(block)
+    if (
+      style.display !== 'block' || style.position !== 'static' ||
+      style.cssFloat !== 'none' || style.breakBefore !== 'auto' ||
+      style.writingMode !== 'horizontal-tb' || style.translate !== 'none' ||
+      style.transform !== 'none'
+    ) return false
+
+    this.leadingWhitespaceCorrection = {
+      element: block,
+      margin: block.style.getPropertyValue('margin-top'),
+      marginPriority: block.style.getPropertyPriority('margin-top'),
+      translate: block.style.getPropertyValue('translate'),
+      translatePriority: block.style.getPropertyPriority('translate'),
+    }
+    // Only probe after the authored layout has overflowed. Browsers may report
+    // a consumed column-start margin as zero, so the resulting geometry proves
+    // whether removing that margin actually eliminates the extra content page.
+    block.style.setProperty('margin-top', '0', 'important')
+    const fitted = this.contentBounds()
+    const bodyStyle = contents.window.getComputedStyle(root)
+    const scale = root.offsetHeight ? root.getBoundingClientRect().height / root.offsetHeight : 1
+    const bottom = height - (parseFloat(bodyStyle.paddingBottom) || 0) * scale
+    if (
+      !fitted || !(scale > 0) || fitted.left < 0 || fitted.right > pageWidth ||
+      fitted.top < 0 || fitted.bottom > bottom || block.getClientRects().length !== 1
+    ) {
+      this.restoreLeadingWhitespace()
+      return false
+    }
+    // Move the already laid-out block, not the body canvas/background. This
+    // cannot fragment its lines again as another large margin would.
+    const offset = Math.max(0, bottom - fitted.bottom - 1) / scale
+    block.style.setProperty('translate', `0 ${offset}px`, 'important')
+    return true
+  }
+
   singlePageFirstPageOffset(width: number) {
     if (
       !this.layout ||
@@ -785,6 +862,8 @@ class IframeView extends EventEmitter<ViewEvents> {
     if (!rect) {
       return 0
     }
+
+    if (this.normalizeLeadingWhitespaceAfterPagination(rect)) return 0
 
     let rectWidth = rect.right - rect.left
     if (rectWidth <= 0 || rectWidth > pageWidth * 1.5) {
@@ -1154,6 +1233,7 @@ class IframeView extends EventEmitter<ViewEvents> {
 
     this._expanding = true
     this.clearSinglePageFirstPageOffset()
+    this.restoreLeadingWhitespace()
 
     if (this.layout.name === 'pre-paginated') {
       width = this.layout.columnWidth
