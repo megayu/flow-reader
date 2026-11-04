@@ -211,10 +211,11 @@ function run(command: string, args: string[], input?: string) {
 function pnpm(args: string[], xvfb = false) {
   const entry = process.env.npm_execpath
   if (entry) {
-    run(
-      xvfb ? 'xvfb-run' : process.execPath,
-      xvfb ? ['--auto-servernum', process.execPath, entry, ...args] : [entry, ...args],
-    )
+    // Standalone pnpm binaries must run directly, not through Node.
+    const isScript = /\.[cm]?js$/i.test(entry)
+    const command = isScript ? process.execPath : entry
+    const commandArgs = isScript ? [entry, ...args] : args
+    run(xvfb ? 'xvfb-run' : command, xvfb ? ['--auto-servernum', command, ...commandArgs] : commandArgs)
   } else if (process.platform === 'win32') {
     throw new Error('Run checks through pnpm verify so the pnpm executable can be resolved on Windows.')
   } else {

@@ -39,8 +39,12 @@ export function runCommand(command: string, args: string[], environment: NodeJS.
 
 export function runPnpm(args: string[], cargoProfile: NodeJS.ProcessEnv) {
   const pnpmExecPath = process.env.npm_execpath
-  const command = pnpmExecPath ? process.execPath : process.platform === 'win32' ? 'pnpm.cmd' : 'pnpm'
-  const commandArgs = pnpmExecPath ? [pnpmExecPath, ...args] : args
+  if (!pnpmExecPath && process.platform === 'win32') {
+    throw new Error('Run bundle scripts through pnpm so its executable can be resolved on Windows.')
+  }
+  const isScript = pnpmExecPath !== undefined && /\.[cm]?js$/i.test(pnpmExecPath)
+  const command = isScript ? process.execPath : pnpmExecPath || 'pnpm'
+  const commandArgs = isScript ? [pnpmExecPath!, ...args] : args
   runCommand(command, commandArgs, cargoProfile)
 }
 
