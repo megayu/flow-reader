@@ -153,7 +153,7 @@ export const defaultSettings: Settings = {
   hideEndnotes: false,
   restoreLastReadingOnStartup: false,
   showLibraryInToc: false,
-  showTocChapterCount: false,
+  showTocChapterCount: true,
   showRecentBooks: false,
   showModifiedBookExportIndicator: true,
   defaultEpubMode: 'archive',
