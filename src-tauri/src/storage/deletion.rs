@@ -128,6 +128,7 @@ pub(super) fn clear_book_caches_impl(
 
     let mut completed = 0;
     let mut restored_source_ids = Vec::new();
+    let mut missing_external_ids = Vec::new();
     for (book_index, book) in all_books.into_iter().enumerate() {
         let id = book.id;
         let restored_source = tasks.run_book_exclusive(&id, TaskPriority::Critical, || {
@@ -143,6 +144,16 @@ pub(super) fn clear_book_caches_impl(
                 .filter(|book| book.id == id)
                 .cloned()
                 .ok_or_else(|| "Book changed during cache clear".to_string())?;
+            if book.scope == BookScope::External {
+                match fs::metadata(&book.source_path) {
+                    Err(error) if error.kind() == io::ErrorKind::NotFound => {
+                        missing_external_ids.push(id.clone());
+                        return Ok(false);
+                    }
+                    Err(error) => return Err(error.to_string()),
+                    Ok(_) => {}
+                }
+            }
             // Editable publications are working copies even when their revisions are equal.
             let has_working_copy = book.scope == BookScope::Library
                 && (book.source_format == BookSourceFormat::Txt
@@ -221,6 +232,19 @@ pub(super) fn clear_book_caches_impl(
         }
     }
 
+    if !missing_external_ids.is_empty() {
+        let pending_deletes = tasks.run_books_exclusive(&missing_external_ids, TaskPriority::Critical, || {
+            let _flush_guard = storage
+                .inner
+                .derived_cache_flush_lock
+                .lock()
+                .map_err(|_| "derived cache flush lock poisoned".to_string())?;
+            rename_books_in_scope_for_deletion(storage, &missing_external_ids, BookScope::External)
+        })?;
+        storage.flush_content_dirty()?;
+        enqueue_pending_delete_cleanup(tasks, pending_deletes);
+    }
+
     if restored_source_ids.is_empty() {
         report_progress(total, total);
         return Ok(Vec::new());
@@ -237,6 +261,14 @@ pub(super) fn clear_book_caches_impl(
 }
 
 pub(super) fn rename_books_for_deletion(storage: &AppStorage, ids: &[String]) -> Result<Vec<PathBuf>, String> {
+    rename_books_in_scope_for_deletion(storage, ids, BookScope::Library)
+}
+
+fn rename_books_in_scope_for_deletion(
+    storage: &AppStorage,
+    ids: &[String],
+    scope: BookScope,
+) -> Result<Vec<PathBuf>, String> {
     let ids = ids.iter().filter(|id| !id.is_empty()).cloned().collect::<HashSet<_>>();
 
     if ids.is_empty() {
@@ -252,13 +284,14 @@ pub(super) fn rename_books_for_deletion(storage: &AppStorage, ids: &[String]) ->
             .state
             .lock()
             .map_err(|_| "storage state lock poisoned".to_string())?;
-        if ids.iter().any(|id| {
-            !state
-                .library
-                .books
-                .iter()
-                .any(|book| &book.id == id && book.scope == BookScope::Library)
-        }) {
+        if state
+            .library
+            .books
+            .iter()
+            .filter(|book| book.scope == scope && ids.contains(&book.id))
+            .count()
+            != ids.len()
+        {
             return Err("Book not found".to_string());
         }
     }

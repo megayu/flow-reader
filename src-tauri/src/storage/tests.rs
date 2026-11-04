@@ -765,6 +765,8 @@ fn cache_clear_preserves_working_content_without_relying_on_saved_edit_revisions
             }
             if *id == "external-epub" {
                 book.scope = BookScope::External;
+                fs::create_dir_all(&root).unwrap();
+                fs::write(&book.source_path, b"external source").unwrap();
             }
             book
         })
@@ -813,6 +815,43 @@ fn cache_clear_preserves_working_content_without_relying_on_saved_edit_revisions
         }
     }
     fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
+fn cache_clear_deletes_only_external_books_with_missing_sources() {
+    let nonce = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos();
+    let root = std::env::temp_dir().join(format!("flow-reader-cache-missing-{}-{nonce}", std::process::id()));
+    let books = ["missing-external", "existing-external", "missing-library"].map(|id| {
+        let mut book = test_library_book_with_id(id, BookSourceFormat::Epub);
+        if id != "missing-library" {
+            book.scope = BookScope::External;
+        }
+        book.source_path = root.join(format!("{id}.epub"));
+        book
+    });
+    let storage = test_storage_with_books(&root, books.to_vec());
+    for book in &books {
+        fs::create_dir_all(storage.book_dir(&book.id)).unwrap();
+        fs::write(storage.book_dir(&book.id).join(STATE_FILE), b"reading state").unwrap();
+    }
+    fs::write(&books[1].source_path, b"external source").unwrap();
+    storage.mark_library_dirty();
+    storage.flush_content_dirty().unwrap();
+    let tasks = TaskService::default();
+    super::deletion::clear_book_caches_impl(&storage, &tasks, false, Default::default(), |_, _| {}).unwrap();
+    let remaining = storage.inner.state.lock().unwrap().library.books.clone();
+    assert_eq!(
+        remaining.iter().map(|book| book.id.as_str()).collect::<Vec<_>>(),
+        ["existing-external", "missing-library"]
+    );
+    assert!(!storage.book_dir("missing-external").exists());
+    assert!(storage.book_dir("existing-external").join(STATE_FILE).exists());
+    assert!(storage.book_dir("missing-library").join(STATE_FILE).exists());
+    assert!(books[1].source_path.exists());
+    let persisted: Library = read_json_or_default(&library_path(&root).unwrap()).unwrap();
+    assert_eq!(persisted.books.len(), 2);
+    assert!(persisted.books.iter().all(|book| book.id != "missing-external"));
+    let _ = fs::remove_dir_all(root);
 }
 
 #[test]
