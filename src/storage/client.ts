@@ -72,7 +72,8 @@ function notify(...tables: TableName[]) {
 }
 
 function stripBookState(book: BookRecord): BookRecord {
-  return { ...book, annotations: [], definitions: [], configuration: undefined }
+  // Native records omit absent counts; explicitly clear a previous cached value.
+  return { ...book, wordCount: book.wordCount, annotations: [], definitions: [], configuration: undefined }
 }
 
 function upsertCachedBook(book: BookRecord) {

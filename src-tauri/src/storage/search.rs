@@ -757,60 +757,51 @@ fn read_derived_sections_from_source(
 
 #[derive(Default)]
 struct WordCounter {
-    non_whitespace_character_count: u64,
-    non_cjk_token_count: u64,
-    has_cjk: bool,
-    token_has_alphanumeric: bool,
+    count: u64,
+    in_word: bool,
 }
 
-trait VisibleTextSink {
-    fn push_text(&mut self, text: &str);
-    fn boundary(&mut self);
-}
-
-impl VisibleTextSink for String {
+impl WordCounter {
     fn push_text(&mut self, text: &str) {
-        self.push_str(text);
-    }
-
-    fn boundary(&mut self) {
-        push_search_text_boundary(self);
-    }
-}
-
-impl VisibleTextSink for WordCounter {
-    fn push_text(&mut self, text: &str) {
-        for character in text.chars() {
+        let mut characters = text.chars().peekable();
+        while let Some(character) = characters.next() {
             if character.is_whitespace() {
-                self.finish_token();
-            } else {
-                self.non_whitespace_character_count = self.non_whitespace_character_count.saturating_add(1);
-                self.has_cjk |= is_cjk_character(character);
-                self.token_has_alphanumeric |= character.is_alphanumeric();
+                self.in_word = false;
+            } else if super::emoji::consume_emoji(character, &mut characters) || is_individual_text_unit(character) {
+                self.count = self.count.saturating_add(1);
+                self.in_word = false;
+            } else if character.is_alphanumeric() && !self.in_word {
+                self.count = self.count.saturating_add(1);
+                self.in_word = true;
             }
         }
     }
 
     fn boundary(&mut self) {
-        self.finish_token();
-    }
-}
-
-impl WordCounter {
-    fn finish_token(&mut self) {
-        if self.token_has_alphanumeric {
-            self.non_cjk_token_count = self.non_cjk_token_count.saturating_add(1);
-        }
-        self.token_has_alphanumeric = false;
+        self.in_word = false;
     }
 
     fn count(&self) -> u64 {
-        if self.has_cjk {
-            self.non_whitespace_character_count
-        } else {
-            self.non_cjk_token_count
-        }
+        self.count
     }
+}
+
+fn is_individual_text_unit(character: char) -> bool {
+    // Fullwidth letters and digits remain in word runs; wide punctuation counts
+    // individually, including typographic quotes, dashes and ellipses.
+    is_cjk_character(character)
+        || (!character.is_alphanumeric()
+            && matches!(
+                character as u32,
+                0x3001..=0x303f
+                    | 0xfe10..=0xfe19
+                    | 0xfe30..=0xfe6f
+                    | 0xff01..=0xff60
+                    | 0xffe0..=0xffe6
+                    | 0x2014
+                    | 0x2018..=0x201f
+                    | 0x2026
+            ))
 }
 
 fn is_cjk_character(character: char) -> bool {
@@ -820,11 +811,15 @@ fn is_cjk_character(character: char) -> bool {
             | 0x2e80..=0x2fdf
             | 0x3040..=0x30ff
             | 0x3130..=0x318f
+            | 0x31a0..=0x31bf
             | 0x31f0..=0x31ff
             | 0x3400..=0x4dbf
             | 0x4e00..=0x9fff
+            | 0xa960..=0xa97f
             | 0xac00..=0xd7af
+            | 0xd7b0..=0xd7ff
             | 0xf900..=0xfaff
+            | 0xff66..=0xff9f
             | 0x20000..=0x323af
     )
 }
@@ -838,19 +833,151 @@ fn word_count_from_search_sections(sections: &[SearchTextSection]) -> u64 {
     counter.count()
 }
 
-fn count_words_in_xhtml(xhtml: &str, counter: &mut WordCounter) {
+fn append_xhtml_visible_text(xhtml: &str, output: &mut String) {
     let cleaned = remove_doctype_declaration(xhtml);
     let Ok(document) = roxmltree::Document::parse(&cleaned) else {
-        counter.push_text(&strip_html_for_search_text(&cleaned));
-        counter.boundary();
+        output.push_str(&strip_html_for_search_text(&cleaned));
+        push_search_text_boundary(output);
         return;
     };
     let body = document
         .descendants()
         .find(|node| node.is_element() && node.has_tag_name("body"))
         .unwrap_or_else(|| document.root_element());
-    append_visible_text(body, counter);
-    counter.boundary();
+    append_visible_text(body, output);
+    push_search_text_boundary(output);
+}
+
+pub(super) fn edited_word_counts(
+    before_xhtml: &str,
+    after_xhtml: &str,
+    target: &BookTextReplaceTarget,
+    old_text: &str,
+    new_text: &str,
+) -> (u64, u64) {
+    let independent_counts = independent_word_count(old_text)
+        .and_then(|before| independent_word_count(new_text).map(|after| (before, after)));
+    // Fast paths do not check excluded ancestors (e.g. svg/math); edits there can change the count.
+    // Nonempty boundary-only replacements preserve word boundaries on both sides.
+    if let Some(counts) = independent_counts
+        .filter(|_| !old_text.is_empty() && !new_text.is_empty())
+        .or_else(|| neighbouring_edit_word_counts(target, old_text, new_text, independent_counts))
+    {
+        return counts;
+    }
+    let mut before = String::new();
+    let mut after = String::new();
+    append_xhtml_visible_text(before_xhtml, &mut before);
+    append_xhtml_visible_text(after_xhtml, &mut after);
+    let prefix: usize = before
+        .chars()
+        .zip(after.chars())
+        .take_while(|(left, right)| left == right)
+        .map(|(character, _)| character.len_utf8())
+        .sum();
+    if prefix == before.len() && prefix == after.len() {
+        return (0, 0);
+    }
+    let suffix: usize = before[prefix..]
+        .chars()
+        .rev()
+        .zip(after[prefix..].chars().rev())
+        .take_while(|(left, right)| left == right)
+        .map(|(character, _)| character.len_utf8())
+        .sum();
+
+    // Retain complete word runs on both sides, including across inline tags.
+    // Halfwidth punctuation is transparent, so it cannot end this context.
+    // This boundary can split rare emoji sequences such as U+3030 + ZWJ + emoji, undercounting the delta.
+    let is_boundary = |character: char| character.is_whitespace() || is_individual_text_unit(character);
+    let start = before[..prefix]
+        .char_indices()
+        .rev()
+        .find(|(_, character)| is_boundary(*character))
+        .map_or(0, |(index, character)| index + character.len_utf8());
+    let before_end = before.len() - suffix;
+    let after_end = after.len() - suffix;
+    let tail = before[before_end..]
+        .char_indices()
+        .find(|(_, character)| is_boundary(*character))
+        .map_or(suffix, |(index, _)| index);
+    let count = |text: &str| {
+        let mut counter = WordCounter::default();
+        counter.push_text(text);
+        counter.count()
+    };
+    (
+        count(&before[start..before_end + tail]),
+        count(&after[start..after_end + tail]),
+    )
+}
+
+fn is_independent_word_boundary(character: char) -> bool {
+    character.is_whitespace() || (is_individual_text_unit(character) && !super::emoji::is_emoji_character(character))
+}
+
+fn independent_word_count(text: &str) -> Option<u64> {
+    text.chars().try_fold(0u64, |count, character| {
+        is_independent_word_boundary(character).then_some(count.saturating_add(u64::from(!character.is_whitespace())))
+    })
+}
+
+fn neighbouring_edit_word_counts(
+    target: &BookTextReplaceTarget,
+    old_text: &str,
+    new_text: &str,
+    independent_counts: Option<(u64, u64)>,
+) -> Option<(u64, u64)> {
+    let mut characters = target.text_node_text.char_indices();
+    let mut offset = 0;
+    let mut left = None;
+    while offset < target.start_offset {
+        let (_, character) = characters.next()?;
+        offset += character.len_utf16();
+        left = Some(character);
+    }
+    if offset != target.start_offset {
+        return None;
+    }
+    let (start, _) = characters.next()?;
+    let end = start.checked_add(old_text.len())?;
+    if target.text_node_text.get(start..end)? != old_text {
+        return None;
+    }
+    let right = target.text_node_text[end..].chars().next();
+    // A known adjacent boundary also makes boundary-only deletion local.
+    if independent_counts.is_some()
+        && (left.is_some_and(is_independent_word_boundary) || right.is_some_and(is_independent_word_boundary))
+    {
+        return independent_counts;
+    }
+    let left = left?;
+    let right = right?;
+    // Digits/#/* can start keycaps. Emoji components and unknown node
+    // edges need the full visible context, including adjacent inline nodes.
+    let safe_neighbour = |character: char| {
+        is_independent_word_boundary(character)
+            || (character.is_alphanumeric()
+                && !character.is_ascii_digit()
+                && !super::emoji::is_emoji_character(character))
+    };
+    if !safe_neighbour(left) || !safe_neighbour(right) {
+        return None;
+    }
+    // Plain neighbours reproduce the word state on each side. Their own
+    // counts cancel in the delta, so the rest of either word is irrelevant.
+    let mut left_buffer = [0; 4];
+    let mut right_buffer = [0; 4];
+    let left = left.encode_utf8(&mut left_buffer);
+    let right = right.encode_utf8(&mut right_buffer);
+    let count = |text: &str| {
+        let mut counter = WordCounter::default();
+        counter.push_text(left);
+        counter.push_text(text);
+        counter.push_text(right);
+        counter.count()
+    };
+    Some((count(old_text), count(new_text)))
 }
 
 fn count_words_from_source(source: &mut impl PublicationSource) -> Result<u64, String> {
@@ -860,8 +987,13 @@ fn count_words_from_source(source: &mut impl PublicationSource) -> Result<u64, S
     let manifest = derived_manifest(&opf_doc);
 
     let mut counter = WordCounter::default();
+    let mut text = String::new();
     visit_derived_spine_documents(source, &opf_doc, &manifest, &opf_dir, |_, _, xhtml| {
-        count_words_in_xhtml(xhtml, &mut counter);
+        // Collect a complete section so inline nodes cannot split emoji sequences.
+        text.clear();
+        append_xhtml_visible_text(xhtml, &mut text);
+        counter.push_text(&text);
+        counter.boundary();
         Ok(())
     })?;
     Ok(counter.count())
@@ -876,7 +1008,7 @@ fn count_words_from_unpacked(unpacked_dir: &Path) -> Result<u64, String> {
 }
 
 fn compute_book_word_count(storage: &AppStorage, tasks: &TaskService, book: &StoredBook) -> Result<u64, String> {
-    if book.source_format == BookSourceFormat::Epub {
+    if book.source_format == BookSourceFormat::Epub && book.revision <= book.source_revision {
         return count_words_from_epub_package(&available_book_source_path(storage, book)?);
     }
 
@@ -1264,10 +1396,10 @@ fn remove_doctype_declaration(value: &str) -> String {
     cleaned
 }
 
-fn append_visible_text(node: roxmltree::Node, output: &mut impl VisibleTextSink) {
+fn append_visible_text(node: roxmltree::Node, output: &mut String) {
     if node.is_text() {
         if let Some(text) = node.text() {
-            output.push_text(text);
+            output.push_str(text);
         }
         return;
     }
@@ -1283,7 +1415,7 @@ fn append_visible_text(node: roxmltree::Node, output: &mut impl VisibleTextSink)
 
     let block = is_search_text_block_element(name);
     if block {
-        output.boundary();
+        push_search_text_boundary(output);
     }
 
     for child in node.children() {
@@ -1291,7 +1423,7 @@ fn append_visible_text(node: roxmltree::Node, output: &mut impl VisibleTextSink)
     }
 
     if block {
-        output.boundary();
+        push_search_text_boundary(output);
     }
 }
 
@@ -2163,10 +2295,38 @@ mod tests {
     }
 
     #[test]
-    fn counts_cjk_characters_and_non_cjk_whitespace_tokens() {
+    fn counts_text_units_consistently() {
         for (text, expected) in [
-            ("你好，世界！", 6),
-            ("你好 ， 世界", 5),
+            ("甲乙，丙丁！", 6),
+            ("甲乙 ， 丙丁", 5),
+            ("abc 中 def", 3),
+            ("abc中def", 3),
+            ("中文 abc", 3),
+            ("𠀀 abc 😀", 3),
+            ("，！ 😀", 3),
+            ("😀😀", 2),
+            ("alpha😀beta", 3),
+            ("👍🏽", 1),
+            ("👨‍👩‍👧‍👦", 1),
+            ("👩🏽‍💻", 1),
+            ("🇨🇳🇯🇵", 2),
+            ("♥️ ☀️", 2),
+            ("*️⃣#️⃣1️⃣2️⃣", 4),
+            ("1234️⃣56", 3),
+            ("🏴\u{e0067}\u{e0062}\u{e0065}\u{e006e}\u{e0067}\u{e007f}", 1),
+            ("【甲】《乙》「丙」", 9),
+            ("“甲”—‘乙’…", 8),
+            ("（）；：？！＄＋＝", 9),
+            ("\r\n\t \u{00a0}\u{2003}\u{3000}", 0),
+            ("-.,!?()[]{}_$+=", 0),
+            ("alpha-beta", 1),
+            ("78.90", 1),
+            ("beta789", 1),
+            ("７８９", 1),
+            ("７８.９０", 1),
+            ("ＡＢＣ７８９", 1),
+            ("７８９甲１２３", 3),
+            ("alpha，beta", 3),
             ("version 2.0", 2),
             ("a - b", 2),
             ("a-b", 1),

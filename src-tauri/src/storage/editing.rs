@@ -865,7 +865,11 @@ pub(super) fn write_source_text_update(path: &Path, update: &SourceTextUpdate) -
     }
 }
 
-fn commit_book_text_edit(storage: &AppStorage, id: &str) -> Result<(StoredBook, BookRecord), String> {
+fn commit_book_text_edit(
+    storage: &AppStorage,
+    id: &str,
+    word_counts: Option<(u64, u64)>,
+) -> Result<(StoredBook, BookRecord), String> {
     // Publish the new revision only after the library write succeeds. The flush/state locks
     // prevent concurrent checkpoints from persisting a provisional revision or losing state.
     let _flush_guard = storage
@@ -885,7 +889,15 @@ fn commit_book_text_edit(storage: &AppStorage, id: &str) -> Result<(StoredBook, 
         .find(|book| book.id == id && book.scope == BookScope::Library)
         .ok_or_else(|| "Book not found".to_string())?;
     let now = now_ms();
+    let previous_word_count = book.word_count;
     mark_book_content_updated_fields(book, now)?;
+    if let (Some(total), Some((before, after))) = (previous_word_count, word_counts) {
+        book.word_count = Some(if after >= before {
+            total.saturating_add(after - before)
+        } else {
+            total.saturating_sub(before - after)
+        });
+    }
     book.updated_at = Some(now);
     let book = book.clone();
     // Resolve fallible response data before the commit point as well.
@@ -967,6 +979,9 @@ pub(super) fn replace_book_text_impl(
         });
     }
     next_book_revision(&initial_book)?;
+    let word_counts = initial_book
+        .word_count
+        .map(|_| super::search::edited_word_counts(&xhtml, &updated_xhtml, &target, &old_text, &new_text));
 
     let source_update =
         if source_format == BookSourceFormat::Txt && initial_book.source_storage == SourceStorage::Managed {
@@ -1024,7 +1039,7 @@ pub(super) fn replace_book_text_impl(
         }
         write_xhtml(&section_path, &updated_xhtml)?;
         section_written = true;
-        commit_book_text_edit(storage, &id)
+        commit_book_text_edit(storage, &id, word_counts)
     })();
     let (book, record) = match result {
         Ok(committed) => committed,

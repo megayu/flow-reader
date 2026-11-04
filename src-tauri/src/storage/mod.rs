@@ -28,6 +28,7 @@ pub(crate) mod checkpoint;
 mod commands;
 mod deletion;
 mod editing;
+mod emoji;
 mod epub_import;
 mod export;
 mod folder_import;
@@ -234,6 +235,8 @@ fn adopt_book_source_fields(book: &mut StoredBook, source_hash: String, size: u6
 
 fn mark_book_content_updated_fields(book: &mut StoredBook, edited_at: u64) -> Result<(), String> {
     book.revision = next_book_revision(book)?;
+    // Content changes invalidate the total unless the caller has a validated edit delta.
+    book.word_count = None;
     book.content_edited_at = Some(edited_at);
     Ok(())
 }

@@ -4200,6 +4200,126 @@ fn txt_replacement_streams_to_target_heading_when_previous_generated_heading_has
 }
 
 #[test]
+fn first_word_count_reads_current_content_with_or_without_search_cache() {
+    for use_search_cache in [false, true] {
+        let root = std::env::temp_dir().join(format!(
+            "flow-reader-current-word-count-{}-{}",
+            std::process::id(),
+            SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos()
+        ));
+        let book = test_library_book(BookSourceFormat::Epub);
+        let storage = test_storage_with_book(&root, book.clone());
+        let tasks = TaskService::default();
+        write_minimal_epub_file(
+            &storage.book_dir("book").join(BOOK_FILE),
+            "Current count",
+            "甲，alpha78 <span>👩</span>‍💻",
+        );
+        get_book_reader_source_impl(&storage, &tasks, &book).unwrap();
+        replace_book_text_impl(
+            &storage,
+            "book".into(),
+            BookTextReplaceTarget {
+                section_href: "chapter.xhtml".into(),
+                text_node_index: 0,
+                text_node_text: "甲，alpha78 ".into(),
+                start_offset: 2,
+                end_offset: 9,
+                paragraph_index: None,
+            },
+            "alpha78".into(),
+            "alpha 78".into(),
+        )
+        .unwrap();
+        if use_search_cache {
+            let current = storage.library_book("book").unwrap();
+            load_or_build_search_text_cache(&storage, &tasks, &current).unwrap();
+        }
+        assert_eq!(
+            super::get_or_compute_book_word_count(&storage, &tasks, "book").unwrap(),
+            5
+        );
+        fs::remove_dir_all(root).unwrap();
+    }
+}
+
+#[test]
+fn text_edits_persist_only_the_delta_of_an_existing_word_count() {
+    for (original, node_text, old_text, replacement, initial_count, expected_count) in [
+        ("甲乙丙", "甲乙丙", "甲乙丙", "丁戊己", Some(100), Some(100)),
+        ("甲乙丙", "甲乙丙", "甲乙丙", "丁戊", Some(100), Some(99)),
+        ("甲乙丙", "甲乙丙", "甲乙丙", "丁戊己庚", Some(100), Some(101)),
+        ("甲乙丙", "甲乙丙", "甲乙丙", "丁戊", None, None),
+        ("abc中", "abc中", "abc", "a", Some(100), Some(100)),
+        ("alpha beta", "alpha beta", " ", "", Some(100), Some(99)),
+        ("alpha", "alpha", "ph", "p h", Some(100), Some(101)),
+        ("甲𠀀乙", "甲𠀀乙", "𠀀", "abc def", Some(100), Some(101)),
+        ("甲，乙", "甲，乙", "，", "！", Some(100), Some(100)),
+        ("甲，乙", "甲，乙", "，", "", Some(100), Some(99)),
+        ("alpha，beta", "alpha，beta", "，", "", Some(100), Some(98)),
+        ("alpha-beta", "alpha-beta", "-", "", Some(100), Some(100)),
+        ("alpha-beta", "alpha-beta", "-", " ", Some(100), Some(101)),
+        ("7890", "7890", "89", "８９", Some(100), Some(100)),
+        ("7890", "7890", "89", "8 9", Some(100), Some(101)),
+        ("alpha<span>,</span>beta", ",", ",", " ", Some(100), Some(101)),
+        ("alpha<span>，</span>beta", "，", "，", "", Some(100), Some(98)),
+        (
+            "甲<p>alpha</p><p>beta</p>乙",
+            "alpha",
+            "ph",
+            "p h",
+            Some(100),
+            Some(101),
+        ),
+        ("甲&amp;乙", "甲&乙", "&", "，", Some(100), Some(101)),
+        ("甲😀乙", "甲😀乙", "😀", "", Some(100), Some(99)),
+        ("alpha😀beta", "alpha😀beta", "😀", "", Some(100), Some(98)),
+        ("甲👍🏽乙", "甲👍🏽乙", "🏽", "🏻", Some(100), Some(100)),
+        ("👨‍👩‍👧‍👦", "👨‍👩‍👧‍👦", "‍", "", Some(100), Some(101)),
+        ("🇨🇳", "🇨🇳", "🇳", "", Some(100), Some(100)),
+        ("甲1️⃣乙", "甲1️⃣乙", "1", "7", Some(100), Some(100)),
+        ("👩<span>‍</span>💻", "‍", "‍", "", Some(100), Some(101)),
+    ] {
+        let root = std::env::temp_dir().join(format!(
+            "flow-reader-edit-word-count-{}-{}",
+            std::process::id(),
+            SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos()
+        ));
+        let mut book = test_library_book(BookSourceFormat::Epub);
+        book.word_count = initial_count;
+        let storage = test_storage_with_book(&root, book.clone());
+        let book_dir = storage.book_dir("book");
+        write_minimal_epub_file(&book_dir.join(BOOK_FILE), "Word count", original);
+        get_book_reader_source_impl(&storage, &TaskService::default(), &book).unwrap();
+        let start = node_text.find(old_text).unwrap();
+        let start_offset = node_text[..start].encode_utf16().count();
+        let saved = replace_book_text_impl(
+            &storage,
+            "book".into(),
+            BookTextReplaceTarget {
+                section_href: "chapter.xhtml".into(),
+                text_node_index: 0,
+                text_node_text: node_text.into(),
+                start_offset,
+                end_offset: start_offset + old_text.encode_utf16().count(),
+                paragraph_index: None,
+            },
+            old_text.into(),
+            replacement.into(),
+        )
+        .unwrap();
+        assert!(saved.changed);
+        assert_eq!(saved.book.word_count, expected_count, "{original} -> {replacement}");
+        assert_eq!(
+            test_storage_from_disk(&root).library_book("book").unwrap().word_count,
+            expected_count,
+            "persisted: {original} -> {replacement}"
+        );
+        fs::remove_dir_all(root).unwrap();
+    }
+}
+
+#[test]
 fn text_edit_succeeds_when_disposable_cache_refresh_fails() {
     let root = std::env::temp_dir().join(format!(
         "flow-reader-edit-cache-failure-{}-{}",
@@ -5404,12 +5524,16 @@ fn importing_the_latest_managed_epub_export_adopts_it_without_losing_editable_co
 #[test]
 fn imported_content_repair_marks_epub_export_dirty() {
     let root = std::env::temp_dir().join(format!("flow-reader-import-repair-dirty-test-{}", std::process::id()));
-    let storage = test_storage_with_book(&root, test_library_book(BookSourceFormat::Epub));
+    let mut book = test_library_book(BookSourceFormat::Epub);
+    book.word_count = Some(100);
+    let storage = test_storage_with_book(&root, book);
 
     let updated = mark_library_book_content_updated(&storage, "book")
         .unwrap()
         .expect("library book should be updated");
 
+    assert_eq!(updated.word_count, None);
+    assert_eq!(storage.library_book("book").unwrap().word_count, None);
     assert_eq!(updated.revision, 2);
     assert!(updated.content_edited_at.is_some());
 
