@@ -8,6 +8,7 @@ const LIST_OVERSCAN = 4
 interface ScrollToItemOptions {
   align?: 'auto' | 'center' | 'end' | 'start'
   index: number
+  paddingTop?: number
 }
 
 export function useList(array: Readonly<any[]> = []) {
@@ -46,6 +47,7 @@ export function useListSize(count = 0) {
     (options: number | ScrollToItemOptions) => {
       const index = typeof options === 'number' ? options : options.index
       const align = typeof options === 'number' ? undefined : options.align
+      const paddingTop = typeof options === 'number' ? 0 : (options.paddingTop ?? 0)
       const el = outerRef.current
       if (!el || !count) return
 
@@ -59,13 +61,13 @@ export function useListSize(count = 0) {
       let nextScrollTop = currentStart
 
       if (align === 'center') {
-        nextScrollTop = start - (viewportHeight - LIST_ITEM_SIZE) / 2
+        nextScrollTop = start - paddingTop - (viewportHeight - paddingTop - LIST_ITEM_SIZE) / 2
       } else if (align === 'end') {
         nextScrollTop = end - viewportHeight
       } else if (align === 'start') {
-        nextScrollTop = start
-      } else if (start < currentStart) {
-        nextScrollTop = start
+        nextScrollTop = start - paddingTop
+      } else if (start < currentStart + paddingTop) {
+        nextScrollTop = start - paddingTop
       } else if (end > currentEnd) {
         nextScrollTop = end - viewportHeight
       }

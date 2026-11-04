@@ -2121,6 +2121,115 @@ test('refresh shortcut preserves tabs and position from the main document and bo
 const SIDEBAR_SCROLLBAR_WIDTH = 10
 const SIDEBAR_EDGE_EPSILON = 0.5
 
+test('long-book keeps TOC ancestors pinned and reveals a clicked ancestor from its first child', async ({ page }) => {
+  const chapter = (number: number, label: string, children = '') =>
+    `<li><a href="chapter_${String(number).padStart(3, '0')}.xhtml">${label}</a>${children && `<ol>${children}</ol>`}</li>`
+  const part = (number: number, label: string) =>
+    chapter(
+      number,
+      label,
+      Array.from({ length: 40 }, (_, index) => chapter(number + index + 1, `${label}-${index + 1}`)).join(''),
+    )
+  const deep =
+    Array.from(
+      { length: 10 },
+      (_, depth) => `<li><a href="chapter_${String(90 + depth).padStart(3, '0')}.xhtml">TOC-DEPTH-${depth}</a><ol>`,
+    ).join('') +
+    Array.from({ length: 40 }, (_, index) => chapter(100 + index, `TOC-LEAF-${index}`)).join('') +
+    '</ol></li>'.repeat(10)
+  const navigation =
+    chapter(1, 'TOC-PREFACE') +
+    chapter(2, 'TOC-VOLUME', part(3, 'TOC-PART-A') + part(44, 'TOC-PART-B')) +
+    deep +
+    Array.from({ length: 40 }, (_, index) => chapter(150 + index, `TOC-TAIL-${index}`)).join('')
+  await page.route('**/test-assets/long/OPS/toc.xhtml*', (route) =>
+    route.fulfill({
+      contentType: 'application/xhtml+xml',
+      body: `<html xmlns="http://www.w3.org/1999/xhtml" xmlns:epub="http://www.idpf.org/2007/ops"><head><title>Synthetic nested navigation</title></head><body><nav epub:type="toc"><ol>${navigation}</ol></nav></body></html>`,
+    }),
+  )
+  await page.setViewportSize({ width: 1000, height: 1200 })
+  await openFixtureBook(page, 0)
+  await ensureTocSidebarVisibility(page, true, { header: false })
+  await page.evaluate(() => (window as any).reader.focusedBookTab.setNavExpanded(true))
+  const pane = page.locator('.SideBar .Pane').last()
+  const scroll = pane.locator('[data-pane-scroll]')
+  const row = (label: string) => scroll.getByRole('button', { name: label, exact: true })
+  await expect(row('TOC-VOLUME')).toBeVisible()
+  const topLabels = () =>
+    scroll.evaluate((element) => {
+      const viewport = element.getBoundingClientRect()
+      return Array.from(element.querySelectorAll<HTMLButtonElement>('button[aria-label]'))
+        .filter((button) => {
+          const rect = button.getBoundingClientRect()
+          return (
+            rect.top >= viewport.top - 0.5 &&
+            rect.bottom <= viewport.bottom &&
+            element.ownerDocument.elementFromPoint(rect.left + rect.width / 2, rect.top + rect.height / 2) !== null &&
+            button.contains(
+              element.ownerDocument.elementFromPoint(rect.left + rect.width / 2, rect.top + rect.height / 2),
+            )
+          )
+        })
+        .sort((a, b) => a.getBoundingClientRect().top - b.getBoundingClientRect().top)
+        .map((button) => button.getAttribute('aria-label'))
+    })
+  await scroll.evaluate((element) => {
+    element.scrollTop = 20 * 24
+  })
+  await expect.poll(async () => (await topLabels()).slice(0, 2)).toEqual(['TOC-VOLUME', 'TOC-PART-A'])
+  await scroll.evaluate((element) => {
+    element.scrollTop = 60 * 24
+  })
+  await expect.poll(async () => (await topLabels()).slice(0, 2)).toEqual(['TOC-VOLUME', 'TOC-PART-B'])
+  for (const sectionIndex of [0, 59]) {
+    await page.evaluate(async (index) => {
+      const tab = (window as any).reader.focusedBookTab
+      await tab.displaySectionStart(tab.sections[index])
+    }, sectionIndex)
+    await scroll.evaluate((element) => {
+      element.scrollTop = 60 * 24
+    })
+    await expect.poll(async () => (await topLabels()).slice(0, 2)).toEqual(['TOC-VOLUME', 'TOC-PART-B'])
+    await row('TOC-PART-B').locator('svg').click()
+    await expect.poll(async () => (await topLabels()).slice(0, 2)).toEqual(['TOC-VOLUME', 'TOC-PART-B'])
+    expect(await page.evaluate(() => (window as any).reader.focusedBookTab.currentSection?.index)).toBe(sectionIndex)
+    await expect(row('TOC-PART-B-1')).toHaveCount(0)
+    await row('TOC-PART-B').locator('svg').click()
+  }
+  await scroll.evaluate((element) => {
+    element.scrollTop = 60 * 24
+  })
+  await expect.poll(async () => (await topLabels()).slice(0, 2)).toEqual(['TOC-VOLUME', 'TOC-PART-B'])
+  await row('TOC-PART-B').click()
+  await expect
+    .poll(() => page.evaluate(() => (window as any).reader.focusedBookTab.currentSection?.href))
+    .toContain('chapter_044.xhtml')
+  await expect.poll(async () => (await topLabels()).slice(0, 3)).toEqual(['TOC-VOLUME', 'TOC-PART-B', 'TOC-PART-B-1'])
+  await row('TOC-PART-B').locator('svg').click()
+  await expect(row('TOC-PART-B-1')).toHaveCount(0)
+  await expect(row('TOC-PART-B')).toBeVisible()
+  await row('TOC-PART-B').locator('svg').click()
+  await expect.poll(async () => (await topLabels()).slice(0, 3)).toEqual(['TOC-VOLUME', 'TOC-PART-B', 'TOC-PART-B-1'])
+  await scroll.evaluate((element) => {
+    element.scrollTop = 110 * 24
+  })
+  await expect
+    .poll(async () => (await topLabels()).filter((label) => label?.startsWith('TOC-DEPTH-')))
+    .toEqual(Array.from({ length: 7 }, (_, depth) => `TOC-DEPTH-${depth}`))
+  await page.setViewportSize({ width: 1000, height: 600 })
+  await expect
+    .poll(async () => {
+      const labels = await topLabels()
+      const height = await scroll.evaluate((element) => element.clientHeight)
+      return (
+        labels.filter((label) => label?.startsWith('TOC-DEPTH-')).length ===
+        Math.min(7, Math.floor((height * 0.4) / 24))
+      )
+    })
+    .toBe(true)
+})
+
 async function expectFullWidthScroll(scroll: Locator) {
   await expect
     .poll(() => scroll.evaluate((element) => element.clientWidth === (element as HTMLElement).offsetWidth))

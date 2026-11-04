@@ -1,6 +1,6 @@
 import clsx from 'clsx'
 import { FoldVerticalIcon, LocateFixedIcon, UnfoldVerticalIcon } from 'lucide-react'
-import { memo, useEffect, useMemo, useRef } from 'react'
+import { memo, useCallback, useEffect, useMemo, useRef } from 'react'
 import { useSnapshot } from 'valtio'
 
 import { compareBookDisplayTitle, getBookDisplayTitle, getBookTooltip } from '@/book'
@@ -10,6 +10,7 @@ import { useTranslation } from '@/hooks/useTranslation'
 import { type BookTab, completeTabOpen, type INavItem, reader, useReaderSnapshot } from '@/models/reader'
 import { sameHref } from '@/noteLinks'
 import { getTocDescendantCounts } from '@/reader/tocCounts'
+import { flattenToc, getTocStickyRows, tocStickyRowLimit } from '@/reader/tocLayout'
 import { useAppStore, useSetViewMode, useShowLibraryInTocValue } from '@/state'
 import { backgroundClassNames } from '@/styles/theme'
 
@@ -189,6 +190,10 @@ const BookTocPane: React.FC<BookTocPaneProps> = ({ active, tab }) => {
     return flattenToc(toc)
   }, [toc, tocVersion])
   const { outerRef, items, scrollbar, scrollToItem, totalSize } = useList(rows)
+  const stickyRows = getTocStickyRows(rows, scrollbar.scrollTop, scrollbar.viewportHeight, LIST_ITEM_SIZE)
+  const stickyIndices = new Set(stickyRows.map(({ index }) => index))
+  const lastSticky = stickyRows.at(-1)
+  const stickyHeight = lastSticky ? lastSticky.top + LIST_ITEM_SIZE : 0
   const expanded = toc?.some((r) => r.expanded)
   const currentNavItem = tabSnapshot.currentNavItem
   const currentKey = tocItemIdentity(currentNavItem)
@@ -197,17 +202,63 @@ const BookTocPane: React.FC<BookTocPaneProps> = ({ active, tab }) => {
     [currentKey, rows],
   )
   const lastScrolledKey = useRef<string | undefined>(undefined)
+  const explicitNavigation = useRef<{ tab: BookTab; pending: boolean; settledKey?: string } | undefined>(undefined)
+  const scrollToTocItem = useCallback(
+    (index: number, align: 'auto' | 'start' = 'auto') => {
+      const depth = rows[index]?.depth ?? 1
+      const limit = tocStickyRowLimit(outerRef.current?.clientHeight ?? 0, LIST_ITEM_SIZE)
+      scrollToItem({ index, align, paddingTop: Math.min(depth - 1, limit) * LIST_ITEM_SIZE })
+    },
+    [outerRef, rows, scrollToItem],
+  )
+  const activateStickyRow = useCallback(
+    (item: INavItem, navigate: () => Promise<unknown>) => {
+      const index = rows.findIndex((row) => row.item === item)
+      if (index < 0) return
+      scrollToTocItem(index, 'start')
+      const request: NonNullable<typeof explicitNavigation.current> = { tab, pending: true }
+      explicitNavigation.current = request
+      void navigate().finally(() => {
+        if (explicitNavigation.current !== request) return
+        request.pending = false
+        request.settledKey = tocItemIdentity(tab.currentNavItem)
+        lastScrolledKey.current = `${tab.id}:${request.settledKey}:${rows.length}`
+      })
+    },
+    [rows, scrollToTocItem, tab],
+  )
+  const collapseStickyRow = useCallback(
+    (item: INavItem) => {
+      const index = rows.findIndex((row) => row.item === item)
+      const row = rows[index]
+      if (!row) return
+      scrollToTocItem(index, 'start')
+      explicitNavigation.current = undefined
+      // Consume the collapse-induced auto-reveal so it cannot replace the parent's scroll anchor.
+      const remainingRows = rows.length - (row.endIndex - index)
+      tab.toggleNavItem(item)
+      lastScrolledKey.current = `${tab.id}:${tocItemIdentity(tab.currentNavItem)}:${remainingRows}`
+    },
+    [rows, scrollToTocItem, tab],
+  )
 
   useEffect(() => {
     if (!active) return
     if (!currentKey || currentIndex < 0) return
 
-    const scrollKey = `${currentKey}:${rows.length}`
+    const scrollKey = `${tab.id}:${currentKey}:${rows.length}`
+    const navigation = explicitNavigation.current
+    if (navigation?.tab === tab && (navigation.pending || navigation.settledKey === currentKey)) {
+      lastScrolledKey.current = scrollKey
+      if (!navigation.pending) explicitNavigation.current = undefined
+      return
+    }
+    explicitNavigation.current = undefined
     if (lastScrolledKey.current === scrollKey) return
 
     lastScrolledKey.current = scrollKey
-    scrollToItem({ index: currentIndex, align: 'auto' })
-  }, [active, currentIndex, currentKey, rows.length, scrollToItem])
+    scrollToTocItem(currentIndex)
+  }, [active, currentIndex, currentKey, rows.length, scrollToTocItem, tab])
 
   return (
     <Pane
@@ -228,14 +279,15 @@ const BookTocPane: React.FC<BookTocPaneProps> = ({ active, tab }) => {
 
             const tocVersion = tab.tocVersion
             tab.expandNavPath(navItem)
+            explicitNavigation.current = undefined
             lastScrolledKey.current = undefined
 
             if (!currentKey || tab.tocVersion !== tocVersion || currentIndex < 0) return
 
             window.requestAnimationFrame(() => {
               if (!active) return
-              lastScrolledKey.current = `${currentKey}:${rows.length}`
-              scrollToItem({ index: currentIndex, align: 'auto' })
+              lastScrolledKey.current = `${tab.id}:${currentKey}:${rows.length}`
+              scrollToTocItem(currentIndex)
             })
           },
         },
@@ -250,6 +302,36 @@ const BookTocPane: React.FC<BookTocPaneProps> = ({ active, tab }) => {
       ]}
       ref={outerRef}
     >
+      <div className="sticky top-0 z-10 h-0">
+        <div className="relative overflow-hidden shadow-[0_1px_0_var(--flow-border)]" style={{ height: stickyHeight }}>
+          {stickyRows.map(({ index, top }, slot) => {
+            const row = rows[index]!
+            return (
+              <div
+                key={index}
+                className="absolute right-0 left-0 bg-(--flow-bg-sidebar)"
+                style={{ top, zIndex: stickyRows.length - slot }}
+              >
+                <div className="bg-foreground/[0.035]">
+                  <TocRow
+                    active={tocItemIdentity(row.item) === currentKey}
+                    activeClassName={backgroundClassNames.rowActiveClassName}
+                    depth={row.depth}
+                    chapterCount={chapterCounts?.get(row.item)}
+                    item={row.item}
+                    itemExpanded={!!row.item.expanded}
+                    itemLabel={row.item.label}
+                    tab={tab}
+                    emptyLabel={EMPTY_ROW_LABEL}
+                    onActivate={activateStickyRow}
+                    onToggle={collapseStickyRow}
+                  />
+                </div>
+              </div>
+            )
+          })}
+        </div>
+      </div>
       <div className="relative" style={{ height: totalSize }}>
         {items.map(({ index, start, size }, slotIndex) => {
           const row = rows[index]
@@ -264,6 +346,7 @@ const BookTocPane: React.FC<BookTocPaneProps> = ({ active, tab }) => {
               style={{
                 height: size,
                 transform: `translateY(${start}px)`,
+                visibility: stickyIndices.has(index) ? 'hidden' : undefined,
               }}
             >
               <TocRow
@@ -295,14 +378,32 @@ interface TocRowProps {
   itemLabel: string
   tab: BookTab
   emptyLabel: string
+  onActivate?: (item: INavItem, navigate: () => Promise<unknown>) => void
+  onToggle?: (item: INavItem) => void
 }
 const TocRow: React.FC<TocRowProps> = memo(
-  ({ active, activeClassName, depth, chapterCount, item, itemExpanded, itemLabel, tab, emptyLabel }) => {
+  ({
+    active,
+    activeClassName,
+    depth,
+    chapterCount,
+    item,
+    itemExpanded,
+    itemLabel,
+    tab,
+    emptyLabel,
+    onActivate,
+    onToggle,
+  }) => {
     if (!item) return null
     const { subitems, href = '' } = item
     const hasSubitems = !!subitems?.length
     const title = itemLabel.trim()
     const toggleItem = () => {
+      if (onToggle) {
+        onToggle(item)
+        return
+      }
       tab.toggleNavItem({
         id: item.id,
         href: item.href,
@@ -310,24 +411,18 @@ const TocRow: React.FC<TocRowProps> = memo(
     }
 
     const handleClick = () => {
-      if (!href.trim()) {
-        if (hasSubitems) toggleItem()
-        return
-      }
-
       const [, id] = href.split('#')
-      const section = tab.sections?.find((s) => sameHref(s.href, href))
+      const section = href.trim() ? tab.sections?.find((s) => sameHref(s.href, href)) : undefined
 
       if (!section) {
         if (hasSubitems) toggleItem()
         return
       }
 
-      if (id) {
-        void tab.displayFromSelector(`#${id}`, section, true, true)
-      } else {
-        void tab.displaySectionStart(section, true)
-      }
+      const navigate = () =>
+        id ? tab.displayFromSelector(`#${id}`, section, true, true) : tab.displaySectionStart(section, true)
+      if (onActivate) onActivate(item, navigate)
+      else void navigate()
     }
 
     return (
@@ -356,17 +451,4 @@ TocRow.displayName = 'TocRow'
 
 function tocItemIdentity(item?: Pick<INavItem, 'id' | 'href' | 'label'>) {
   return item && (item.id || item.href || item.label)
-}
-
-function flattenToc(nodes: INavItem[] = []) {
-  const rows: Array<{ item: INavItem; depth: number }> = []
-
-  const visit = (node: INavItem, depth: number) => {
-    rows.push({ item: node, depth })
-    if (!node.expanded) return
-    node.subitems?.forEach((item) => visit(item, depth + 1))
-  }
-
-  nodes.forEach((node) => visit(node, 1))
-  return rows
 }
