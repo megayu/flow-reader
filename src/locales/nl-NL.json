@@ -279,8 +279,6 @@
   "settings.show_library_in_toc.description": "Toont een bibliotheekknop boven de inhoudsopgave om snel van boek te wisselen.",
   "settings.show_recent_books": "Recent gelezen boeken tonen",
   "settings.show_recent_books.description": "Houdt recent gelezen boeken bij en toont deze bovenaan de bibliotheek.",
-  "settings.show_toc_chapter_count": "Totaal aantal subhoofdstukken tonen",
-  "settings.show_toc_chapter_count.description": "Toont rechts van elk bovenliggend item in de inhoudsopgave het totale aantal subhoofdstukken op alle niveaus.",
   "settings.source_storage": "Originele bestanden rechtstreeks gebruiken",
   "settings.source_storage.description": "Tijdens het importeren worden geen kopieën opgeslagen, zodat opslagruimte wordt bespaard. Als de originele bestanden veranderen en EPUB-bewerking is uitgeschakeld, zijn de boeken niet meer beschikbaar. Geldt alleen voor nieuwe imports.",
   "settings.source_storage.txt_copy": "TXT-kopieën bewaren",
@@ -375,6 +373,8 @@
   "theme.source_color": "Accentkleur",
   "theme.title": "Achtergrondthema",
 
+  "toc.hide_chapter_count": "Totaal aantal subhoofdstukken verbergen",
+  "toc.show_chapter_count": "Totaal aantal subhoofdstukken tonen",
   "toc.title": "Inhoudsopgave",
 
   "translation.auto_detect": "Automatisch detecteren",

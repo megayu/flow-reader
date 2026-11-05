@@ -279,8 +279,6 @@
   "settings.show_library_in_toc.description": "在书籍目录上方显示书架，便于快速切换书籍。",
   "settings.show_recent_books": "显示最近阅读",
   "settings.show_recent_books.description": "记录最近阅读的书籍，并显示在书架顶部。",
-  "settings.show_toc_chapter_count": "显示子章节总数",
-  "settings.show_toc_chapter_count.description": "在目录中有子章节的条目右侧显示其所有层级的子章节总数。",
   "settings.source_storage": "直接引用原文件",
   "settings.source_storage.description": "导入时不保存副本，节省存储空间。原文件变动且关闭 EPUB 编辑时，书籍将无法打开。仅对新导入书籍生效。",
   "settings.source_storage.txt_copy": "保留 TXT 副本",
@@ -375,6 +373,8 @@
   "theme.source_color": "强调色",
   "theme.title": "背景主题",
 
+  "toc.hide_chapter_count": "隐藏子章节总数",
+  "toc.show_chapter_count": "显示子章节总数",
   "toc.title": "目录",
 
   "translation.auto_detect": "自动检测",

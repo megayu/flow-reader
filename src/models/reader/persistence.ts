@@ -29,6 +29,7 @@ function sameConfiguration(left: BookRecord['configuration'], right: BookRecord[
 function cloneConfiguration(configuration: BookRecord['configuration']) {
   if (!configuration) return undefined
   return {
+    ...configuration,
     ...(configuration.typography ? { typography: { ...configuration.typography } } : {}),
     ...(configuration.spread ? { spread: { ...configuration.spread } } : {}),
   }

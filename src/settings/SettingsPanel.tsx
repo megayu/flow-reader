@@ -302,23 +302,6 @@ export const SettingsPanel: React.FC = () => {
                   }}
                 />
               </Item>
-              <Item
-                title={t('settings.show_toc_chapter_count')}
-                description={t('settings.show_toc_chapter_count.description')}
-                controlId="settings-show-toc-chapter-count"
-              >
-                <SettingsCheckbox
-                  id="settings-show-toc-chapter-count"
-                  label={t('settings.show_toc_chapter_count')}
-                  checked={settings.showTocChapterCount === true}
-                  onCheckedChange={(checked) => {
-                    setSettings((prev) => ({
-                      ...prev,
-                      showTocChapterCount: checked,
-                    }))
-                  }}
-                />
-              </Item>
             </div>
           )}
           {activeTab === 'storage' && (

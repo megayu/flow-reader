@@ -279,8 +279,6 @@
   "settings.show_library_in_toc.description": "目次リストの上に本棚ボタンを表示し、素早い書籍の切り替えを可能にします。",
   "settings.show_recent_books": "最近読んだ本を表示",
   "settings.show_recent_books.description": "最近読んだ書籍を記録し、本棚の最上部に表示します。",
-  "settings.show_toc_chapter_count": "子チャプターの総数を表示",
-  "settings.show_toc_chapter_count.description": "目次の子チャプターを持つ項目の右側に、すべての階層の子チャプターの総数を表示します。",
   "settings.source_storage": "元のファイルを直接使用",
   "settings.source_storage.description": "取り込み時にコピーを作成せず、容量を節約します。EPUB 編集が無効な場合、元のファイルが移動・変更されると開けなくなります（新規取り込みのみに適用）。",
   "settings.source_storage.txt_copy": "TXT ファイルのコピーを保持",
@@ -375,6 +373,8 @@
   "theme.source_color": "アクセントカラー",
   "theme.title": "背景テーマ",
 
+  "toc.hide_chapter_count": "子チャプターの総数を非表示",
+  "toc.show_chapter_count": "子チャプターの総数を表示",
   "toc.title": "目次",
 
   "translation.auto_detect": "自動検出",

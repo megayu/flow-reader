@@ -135,6 +135,7 @@ export interface BookRecord {
   definitions: string[]
   annotations: Annotation[]
   configuration?: {
+    showTocChapterCount?: boolean
     typography?: TypographyConfiguration
     spread?: ReadingSpreadRecord
   }

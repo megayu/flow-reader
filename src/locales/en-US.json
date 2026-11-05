@@ -279,8 +279,6 @@
   "settings.show_library_in_toc.description": "Shows the library above the book's table of contents for quick switching.",
   "settings.show_recent_books": "Show recent books",
   "settings.show_recent_books.description": "Tracks recently read books and shows them at the top of the library.",
-  "settings.show_toc_chapter_count": "Show subchapter totals",
-  "settings.show_toc_chapter_count.description": "Shows the total number of subchapters at all levels to the right of each parent entry in the table of contents.",
   "settings.source_storage": "Use original files directly",
   "settings.source_storage.description": "No copies are saved during import, saving storage space. Books with EPUB editing disabled will become unavailable if their original files change. Applies only to new imports.",
   "settings.source_storage.txt_copy": "Keep TXT copies",
@@ -375,6 +373,8 @@
   "theme.source_color": "Accent color",
   "theme.title": "Background theme",
 
+  "toc.hide_chapter_count": "Hide subchapter totals",
+  "toc.show_chapter_count": "Show subchapter totals",
   "toc.title": "Table of contents",
 
   "translation.auto_detect": "Auto-detect",

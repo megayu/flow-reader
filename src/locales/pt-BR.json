@@ -279,8 +279,6 @@
   "settings.show_library_in_toc.description": "Mostra um botão de biblioteca acima do sumário para alternar rapidamente.",
   "settings.show_recent_books": "Mostrar livros recentes",
   "settings.show_recent_books.description": "Registra os livros lidos recentemente e os exibe no topo da biblioteca.",
-  "settings.show_toc_chapter_count": "Mostrar total de subcapítulos",
-  "settings.show_toc_chapter_count.description": "Mostra à direita de cada entrada com subcapítulos no sumário o total de subcapítulos de todos os níveis.",
   "settings.source_storage": "Usar os arquivos originais diretamente",
   "settings.source_storage.description": "Não salva cópias durante a importação para economizar espaço. Se os arquivos originais forem alterados e a edição de EPUB estiver desativada, os livros ficarão indisponíveis. Aplica-se apenas a novas importações.",
   "settings.source_storage.txt_copy": "Manter cópias TXT",
@@ -375,6 +373,8 @@
   "theme.source_color": "Cor de destaque",
   "theme.title": "Tema de fundo",
 
+  "toc.hide_chapter_count": "Ocultar total de subcapítulos",
+  "toc.show_chapter_count": "Mostrar total de subcapítulos",
   "toc.title": "Sumário",
 
   "translation.auto_detect": "Detecção automática",

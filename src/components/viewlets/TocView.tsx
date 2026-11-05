@@ -1,5 +1,5 @@
 import clsx from 'clsx'
-import { FoldVerticalIcon, LocateFixedIcon, UnfoldVerticalIcon } from 'lucide-react'
+import { FoldVerticalIcon, ListOrderedIcon, LocateFixedIcon, UnfoldVerticalIcon } from 'lucide-react'
 import { memo, useCallback, useEffect, useMemo, useRef } from 'react'
 import { useSnapshot } from 'valtio'
 
@@ -11,7 +11,7 @@ import { type BookTab, completeTabOpen, type INavItem, reader, useReaderSnapshot
 import { sameHref } from '@/noteLinks'
 import { getTocDescendantCounts } from '@/reader/tocCounts'
 import { flattenToc, getTocStickyRows, tocStickyRowLimit } from '@/reader/tocLayout'
-import { useAppStore, useSetViewMode, useShowLibraryInTocValue } from '@/state'
+import { useSetViewMode, useShowLibraryInTocValue } from '@/state'
 import { backgroundClassNames } from '@/styles/theme'
 
 import { AppTooltip } from '../AppTooltip'
@@ -19,6 +19,7 @@ import { readerPageTooltipContentStyle } from '../appTooltipStyles'
 import { BookTooltipContent } from '../BookTooltipContent'
 import { Pane, PaneView, type PaneViewProps } from '../base/PaneView'
 import { StateLayer } from '../base/StateLayer'
+import { IconButton } from '../IconButton'
 import { EMPTY_ROW_LABEL, Row } from '../Row'
 
 export const TocView: React.FC<PaneViewProps> = (props) => {
@@ -182,7 +183,7 @@ const BookTocPane: React.FC<BookTocPaneProps> = ({ active, tab }) => {
   const t = useTranslation()
   const tabSnapshot = useSnapshot(tab)
   const toc = tab.nav?.toc as INavItem[] | undefined
-  const showChapterCount = useAppStore((state) => state.settings.showTocChapterCount === true)
+  const showChapterCount = tabSnapshot.book.configuration?.showTocChapterCount !== false
   const chapterCounts = showChapterCount && toc ? getTocDescendantCounts(toc) : undefined
   const tocVersion = tabSnapshot.tocVersion
   const rows = useMemo(() => {
@@ -268,6 +269,23 @@ const BookTocPane: React.FC<BookTocPaneProps> = ({ active, tab }) => {
       scrollbar={{ ...scrollbar, scrollRef: outerRef }}
       stateKey="readerToc"
       actions={[
+        {
+          id: 'toggle-chapter-count',
+          content: (
+            <IconButton
+              Icon={ListOrderedIcon}
+              title={t(showChapterCount ? 'toc.hide_chapter_count' : 'toc.show_chapter_count')}
+              aria-pressed={showChapterCount}
+              className={showChapterCount ? 'bg-(--flow-bg-control-active) text-(--flow-text)' : undefined}
+              onClick={() => {
+                tab.updateConfiguration({
+                  ...tab.book.configuration,
+                  showTocChapterCount: !showChapterCount,
+                })
+              }}
+            />
+          ),
+        },
         {
           id: 'locate-current',
           title: t('action.locate_current'),

@@ -279,8 +279,6 @@
   "settings.show_library_in_toc.description": "Отображает кнопку библиотеки над оглавлением для быстрого переключения между книгами.",
   "settings.show_recent_books": "Показывать недавние книги",
   "settings.show_recent_books.description": "Отслеживает книги, которые недавно читали, и показывает их вверху библиотеки.",
-  "settings.show_toc_chapter_count": "Показывать общее число подразделов",
-  "settings.show_toc_chapter_count.description": "Справа от каждого пункта оглавления с подразделами показывает их общее число на всех уровнях.",
   "settings.source_storage": "Использовать исходные файлы напрямую",
   "settings.source_storage.description": "Не создает копии при импорте для экономии места. Если исходные файлы изменятся и редактирование EPUB отключено, книги станут недоступны. Применяется только к новым импортам.",
   "settings.source_storage.txt_copy": "Сохранять копии файлов TXT",
@@ -375,6 +373,8 @@
   "theme.source_color": "Цвет акцента",
   "theme.title": "Тема фона",
 
+  "toc.hide_chapter_count": "Скрывать общее число подразделов",
+  "toc.show_chapter_count": "Показывать общее число подразделов",
   "toc.title": "Оглавление",
 
   "translation.auto_detect": "Автоопределение",

@@ -279,8 +279,6 @@
   "settings.show_library_in_toc.description": "Muestra un botón de biblioteca sobre el índice del libro para cambiar rápidamente de lectura.",
   "settings.show_recent_books": "Mostrar libros recientes",
   "settings.show_recent_books.description": "Registra las lecturas recientes y las muestra en la parte superior de la biblioteca.",
-  "settings.show_toc_chapter_count": "Mostrar total de subcapítulos",
-  "settings.show_toc_chapter_count.description": "Muestra a la derecha de cada entrada con subcapítulos del índice el total de sus subcapítulos de todos los niveles.",
   "settings.source_storage": "Usar directamente los archivos originales",
   "settings.source_storage.description": "No se guardan copias durante la importación para ahorrar espacio. Si los archivos originales cambian y la edición de EPUB está desactivada, los libros dejarán de estar disponibles. Solo se aplica a las nuevas importaciones.",
   "settings.source_storage.txt_copy": "Guardar copias de TXT",
@@ -375,6 +373,8 @@
   "theme.source_color": "Color de énfasis",
   "theme.title": "Tema de fondo",
 
+  "toc.hide_chapter_count": "Ocultar total de subcapítulos",
+  "toc.show_chapter_count": "Mostrar total de subcapítulos",
   "toc.title": "Índice",
 
   "translation.auto_detect": "Detección automática",

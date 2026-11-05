@@ -279,8 +279,6 @@
   "settings.show_library_in_toc.description": "Wyświetla przycisk biblioteki nad spisem treści w celu szybkiego przełączania książek.",
   "settings.show_recent_books": "Pokaż ostatnio czytane",
   "settings.show_recent_books.description": "Zapisuje ostatnio czytane pozycje i wyświetla je u góry biblioteki.",
-  "settings.show_toc_chapter_count": "Pokazuj łączną liczbę podrozdziałów",
-  "settings.show_toc_chapter_count.description": "Pokazuje po prawej stronie nadrzędnych pozycji spisu treści łączną liczbę podrozdziałów na wszystkich poziomach.",
   "settings.source_storage": "Używaj plików oryginalnych bezpośrednio",
   "settings.source_storage.description": "Nie tworzy kopii podczas importu, oszczędzając miejsce. Jeśli pliki oryginalne się zmienią, książki z wyłączoną edycją EPUB przestaną być dostępne. Dotyczy tylko nowych importów.",
   "settings.source_storage.txt_copy": "Zachowuj kopie plików TXT",
@@ -375,6 +373,8 @@
   "theme.source_color": "Kolor akcentu",
   "theme.title": "Motyw tła",
 
+  "toc.hide_chapter_count": "Ukryj łączną liczbę podrozdziałów",
+  "toc.show_chapter_count": "Pokazuj łączną liczbę podrozdziałów",
   "toc.title": "Spis treści",
 
   "translation.auto_detect": "Wykryj automatycznie",
