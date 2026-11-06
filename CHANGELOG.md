@@ -2,6 +2,19 @@
 
 ## [Unreleased]
 
+## [0.1.6] - 2026-11-06
+
+- Added subchapter totals to the table of contents, with a per-book toggle.
+- Added automatic word count updates after text edits and improved counting for mixed-language text and emoji.
+- Improved table of contents navigation by keeping parent entries visible while scrolling.
+- Improved EPUB page layout for chapter illustrations, short title pages, and books with mixed fonts.
+- Improved EPUBs created from TXT to make it easier to work around Duokan layout issues by customizing volume title page backgrounds and chapter illustrations.
+- Improved security when opening app links and reading EPUB books.
+- Improved cache cleanup by removing temporary books whose original files are missing.
+- Improved performance in areas such as navigating chapters with repeated illustrations, managing memory while reading EPUBs, etc.
+- Several bug fixes.
+- Several minor UI improvements.
+
 ## [0.1.5] - 2026-10-09
 
 - Added support for moving app data to a custom storage folder.

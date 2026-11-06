@@ -93,7 +93,7 @@ dependencies = [
 
 [[package]]
 name = "flow-epub-cover"
-version = "0.1.5"
+version = "0.1.6"
 dependencies = [
  "roxmltree",
  "thiserror",
@@ -102,7 +102,7 @@ dependencies = [
 
 [[package]]
 name = "flow-epub-thumbnail"
-version = "0.1.5"
+version = "0.1.6"
 dependencies = [
  "flow-epub-cover",
  "image",
