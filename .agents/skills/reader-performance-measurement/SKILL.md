@@ -85,9 +85,10 @@ runs, warmup, and launch configuration.
   metadata matches, or long-task policy.
 
 Update history only for matched same-level optimization evidence. Record
-percentage changes, level, conditions, and decision; store accepted/rejected
-work once and move it if evidence reverses. Do not record feature gates,
-after-only results, smoke, or local artifact paths.
+timing changes only as percentages, never absolute durations. Include level,
+conditions, and decision; store accepted/rejected work once and move it if
+evidence reverses. Do not record feature gates, after-only results, smoke, or
+local artifact paths.
 
 Report the gate, level, key deltas, decision, and limitations. Include baseline
 and after times in the response to the user. Mention artifacts only when
