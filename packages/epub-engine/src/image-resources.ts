@@ -1,38 +1,29 @@
-// Blob URLs are shared across views, but owned by the book that loaded them.
-// The budget includes retired URLs still held by loading views. Those URLs
-// cannot be revoked until loading finishes, and must not free budget early.
-const BYTE_LIMIT = 64 * 1024 * 1024
-const ENTRY_LIMIT = 128
-const entries = new Map<Entry, true>()
+const MIN_IMAGE_BYTES = 11 * 256 * 1024
+const MAX_IMAGE_BYTES = 16 * 1024 * 1024
+const BACKGROUND_EXPIRY_MS = 60_000
+const LOCAL_RESOURCE_URL = /^(?:https?:\/\/(?:epub|asset)\.localhost\/|(?:epub|asset):\/\/localhost\/)/i
 const originalSources = new Map<string, string>()
-let bytes = 0
-let registeredEntries = 0
 
-interface Entry {
-  scope: ImageResourceScope
+interface Resource {
   source: string
-  url: string
-  size: number
-  users: number
-  loadingUsers: number
-  retired: boolean
-  revoked: boolean
+  refs: number
+  loading: number
+  controller: AbortController
+  ready: Promise<void>
+  url?: string
+}
+
+interface ViewImage {
+  attributes: Attr[]
+  resource?: Resource
 }
 
 export interface ImageResourceLease {
-  content: string
+  readonly ready: Promise<void>
+  readonly images: ReadonlyMap<string, ViewImage>
+  serialize(render: () => string): string
   loaded(): void
   release(): void
-}
-
-function revoke(entry: Entry) {
-  if (!entry.users) originalSources.delete(entry.url)
-  if (!entry.revoked) {
-    URL.revokeObjectURL(entry.url)
-    entry.revoked = true
-    bytes -= entry.size
-    registeredEntries--
-  }
 }
 
 /** Recover the authored resource for previews, downloads and image matching. */
@@ -40,198 +31,192 @@ export function originalImageResourceUrl(url: string) {
   return originalSources.get(url) ?? url
 }
 
-function retire(entry: Entry) {
-  if (entry.retired) return
-  entry.retired = true
-  entries.delete(entry)
-  entry.scope.forget(entry)
-  if (!entry.loadingUsers) revoke(entry)
-}
+const XLINK_NAMESPACE = 'http://www.w3.org/1999/xlink'
 
-function makeRoom(size: number) {
-  for (const entry of entries.keys()) {
-    if (bytes + size <= BYTE_LIMIT && registeredEntries < ENTRY_LIMIT) break
-    if (!entry.loadingUsers) retire(entry)
+function candidateKey(source: string) {
+  const path = source.split(/[?#]/, 1)[0]!
+  try {
+    return decodeURIComponent(path)
+  } catch {
+    return path
   }
-  return bytes + size <= BYTE_LIMIT && registeredEntries < ENTRY_LIMIT
-}
-
-const scopes = new Set<ImageResourceScope>()
-
-/** Release reusable images on an OS memory warning, without polling. */
-export function releaseImageResourceCaches() {
-  for (const scope of scopes) scope.releaseCache()
-}
-
-// Attribute scanning preserves the original serialized document and its CFIs.
-// Preserve comments/raw text and quoted '>' characters rather than treating
-// authored image-looking strings as actual resource references.
-const IMAGE_TAG = /<!--[\s\S]*?-->|<(?:[\w-]+:)?(script|style|textarea|title)\b(?:[^<>"']|"[^"]*"|'[^']*')*>[\s\S]*?<\/(?:[\w-]+:)?\1\s*>|<(?:[\w-]+:)?(?:img|image)\b(?:[^<>"']|"[^"]*"|'[^']*')*>/gi
-const IS_IMAGE_TAG = /^<(?:[\w-]+:)?(?:img|image)\b/i
-const ATTRIBUTE = /([\w:-]+\s*=\s*)(["'])(.*?)\2/g
-const LOCAL_IMAGE =
-  /^(?:https?:\/\/(?:epub|asset)\.localhost\/|(?:epub|asset):\/\/localhost\/)[^?#]+\.(?:png|jpe?g|gif|webp|avif|bmp)(?:[?#].*)?$/i
-
-function attributeValue(value: string) {
-  return value.replace(/&(?:amp|quot|apos|lt|gt|#\d+|#x[\da-f]+);/gi, (entity) => {
-    const named: Record<string, string> = { '&amp;': '&', '&quot;': '"', '&apos;': "'", '&lt;': '<', '&gt;': '>' }
-    if (entity[1] !== '#') return named[entity.toLowerCase()] ?? entity
-    const hex = entity[2]?.toLowerCase() === 'x'
-    const point = Number.parseInt(entity.slice(hex ? 3 : 2, -1), hex ? 16 : 10)
-    return point > 0 && point <= 0x10ffff ? String.fromCodePoint(point) : entity
-  })
 }
 
 export class ImageResourceScope {
-  private readonly cached = new Map<string, Entry>()
-  private readonly live = new Set<Entry>()
-  private readonly pending = new Map<string, { controller: AbortController; result: Promise<Entry | undefined> }>()
+  private readonly resources = new Map<string, Resource>()
+  private chapter = new Set<Resource>()
+  private readonly candidates: Set<string>
+  private backgroundSince?: number
   private closed = false
-  private generation = 0
 
-  constructor() {
-    scopes.add(this)
+  constructor(candidates: readonly string[]) {
+    this.candidates = new Set(candidates.filter((url) => LOCAL_RESOURCE_URL.test(url)).map(candidateKey))
   }
 
-  forget(entry: Entry) {
-    if (this.cached.get(entry.source) === entry) this.cached.delete(entry.source)
-    if (!entry.users) this.live.delete(entry)
-  }
-
-  private async acquire(source: string): Promise<Entry | undefined> {
-    if (this.closed) return
-    let entry = this.cached.get(source)
-    if (!entry) {
-      let pending = this.pending.get(source)
-      if (!pending) {
-        const controller = new AbortController()
-        const generation = this.generation
-        const result = (async () => {
-          try {
-            const response = await fetch(source, { signal: controller.signal })
-            if (!response.ok) return
-            const blob = await response.blob()
-            if (this.closed || generation !== this.generation || controller.signal.aborted) return
-            // Fall back to the authored URL when loading leases occupy the
-            // budget; never retain another Blob outside the capacity limit.
-            if (blob.size > BYTE_LIMIT || !/^image\/(?:png|jpeg|gif|webp|avif|bmp)$/i.test(blob.type)) return
-            if (!makeRoom(blob.size)) return
-            const loaded: Entry = {
-              scope: this,
-              source,
-              url: URL.createObjectURL(blob),
-              size: blob.size,
-              users: 0,
-              loadingUsers: 0,
-              retired: false,
-              revoked: false,
-            }
-            this.live.add(loaded)
-            originalSources.set(loaded.url, source)
-            this.cached.set(source, loaded)
-            entries.set(loaded, true)
-            bytes += loaded.size
-            registeredEntries++
-            return loaded
-          } catch {
-            // Preserve normal browser loading/error behavior for failed assets.
-            return undefined
-          }
-        })()
-        pending = { controller, result }
-        this.pending.set(source, pending)
-        void result.finally(() => {
-          if (this.pending.get(source) === pending) this.pending.delete(source)
-        })
-      }
-      entry = await pending.result
+  private dispose(resource: Resource) {
+    if (this.resources.get(resource.source) === resource) {
+      this.resources.delete(resource.source)
+      resource.controller.abort()
+      if (resource.url) URL.revokeObjectURL(resource.url)
     }
-    if (!entry || this.closed || entry.revoked) return
-    entry.users++
-    entry.loadingUsers++
-    if (!entry.retired) {
-      entries.delete(entry)
-      entries.set(entry, true)
-    }
-    return entry
+    // Loaded views still need the original address for previews and downloads
+    // after background expiry revokes the Blob registration.
+    if (resource.refs === 0 && resource.url) originalSources.delete(resource.url)
   }
 
-  async prepare(content: string): Promise<ImageResourceLease> {
-    const sources = new Set<string>()
-    for (const match of content.matchAll(IMAGE_TAG)) {
-      if (!IS_IMAGE_TAG.test(match[0])) continue
-      // Let the browser choose responsive candidates; do not fetch an unused src.
-      if (/\bsrcset\s*=/i.test(match[0])) continue
-      for (const attribute of match[0].matchAll(ATTRIBUTE)) {
-        if (!/^(?:src|(?:xlink:)?href)\s*=/i.test(attribute[1]!)) continue
-        const source = attributeValue(attribute[3]!)
-        if (LOCAL_IMAGE.test(source)) sources.add(source)
+  private finishLoading(resource: Resource) {
+    if (--resource.loading === 0 && resource.controller.signal.aborted) this.dispose(resource)
+  }
+
+  private release(resource: Resource) {
+    if (--resource.refs === 0 && !this.chapter.has(resource)) this.dispose(resource)
+  }
+
+  commit(leases: Iterable<ImageResourceLease | undefined>) {
+    const next = new Set<Resource>()
+    for (const lease of leases) {
+      if (!lease) continue
+      for (const { resource } of lease.images.values()) {
+        if (resource && !resource.controller.signal.aborted) next.add(resource)
       }
     }
-    const acquired = new Map<string, Entry>()
-    const remaining = sources.values()
-    // Bound concurrent fetches in image-heavy chapters without a task per image.
-    await Promise.all(
-      Array.from({ length: Math.min(4, sources.size) }, async () => {
-        for (const source of remaining) {
-          const entry = await this.acquire(source)
-          if (entry) acquired.set(source, entry)
+    for (const resource of this.chapter) {
+      if (!next.has(resource) && resource.refs === 0) this.dispose(resource)
+    }
+    this.chapter = next
+  }
+
+  updateForeground(foreground: boolean, now: number) {
+    if (this.backgroundSince !== undefined && now - this.backgroundSince > BACKGROUND_EXPIRY_MS) {
+      this.chapter.clear()
+      for (const resource of this.resources.values()) {
+        if (resource.url && resource.loading) {
+          // Keep an assigned URL usable until the iframe load settles, but
+          // exclude it from new acquisitions as soon as it expires.
+          resource.controller.abort()
+        } else {
+          this.dispose(resource)
         }
-      }),
-    )
-    let loading = true
+      }
+    }
+    this.backgroundSince = foreground ? undefined : (this.backgroundSince ?? now)
+  }
+
+  private async load(source: string, resource: Resource) {
+    try {
+      const response = await fetch(source, { signal: resource.controller.signal })
+      if (!response.ok) return
+      const blob = await response.blob()
+      if (resource.controller.signal.aborted) return
+      if (blob.size < MIN_IMAGE_BYTES || blob.size > MAX_IMAGE_BYTES ||
+          !/^image\/(?:png|jpeg|gif|webp|avif|bmp)$/i.test(blob.type)) return
+      resource.url = URL.createObjectURL(blob)
+      originalSources.set(resource.url, source)
+    } catch {
+      // Preserve normal browser loading/error behavior for failed assets.
+    }
+  }
+
+  private acquire(source: string) {
+    let resource = this.resources.get(source)
+    if (resource?.controller.signal.aborted) return
+    if (!resource) {
+      resource = { source, refs: 0, loading: 0, controller: new AbortController(), ready: Promise.resolve() }
+      this.resources.set(source, resource)
+      resource.ready = this.load(source, resource)
+    }
+    resource.refs++
+    resource.loading++
+    return resource
+  }
+
+  /** The view owns this borrow immediately, including while ready is pending. */
+  borrow(contents: Element): ImageResourceLease | undefined {
+    if (this.closed) return
+    const images = new Map<string, ViewImage>()
+    for (const image of contents.querySelectorAll('img, image')) {
+      const htmlImage = image.localName === 'img'
+      // Keep responsive selection and lazy fetching in the browser.
+      if (htmlImage && (image.hasAttribute('srcset') || image.parentElement?.localName === 'picture' ||
+          image.getAttribute('loading')?.toLowerCase() === 'lazy')) continue
+      const attribute = htmlImage
+        ? image.getAttributeNode('src')
+        : (image.getAttributeNode('href') ?? image.getAttributeNodeNS(XLINK_NAMESPACE, 'href'))
+      if (!attribute) continue
+      const source = attribute.value
+      if (!this.candidates.has(candidateKey(source))) continue
+      const entry = images.get(source)
+      if (entry) entry.attributes.push(attribute)
+      else images.set(source, { attributes: [attribute] })
+    }
+    if (!images.size) return
+
+    let state: 'loading' | 'loaded' | 'released' = 'loading'
+    let cancel!: () => void
+    const cancelled = new Promise<void>((resolve) => { cancel = resolve })
     const loaded = () => {
-      if (!loading) return
-      loading = false
-      for (const entry of acquired.values()) {
-        entry.loadingUsers--
-        // Loaded elements retain their image resource independently of the URL
-        // registry. Future documents always resolve from the canonical source.
-        if (entry.retired && !entry.loadingUsers) revoke(entry)
+      if (state !== 'loading') return
+      state = 'loaded'
+      for (const { resource } of images.values()) {
+        if (resource) this.finishLoading(resource)
       }
     }
     const release = () => {
+      if (state === 'released') return
       loaded()
-      for (const entry of acquired.values()) {
-        entry.users--
-        if (!entry.users && entry.retired) {
-          revoke(entry)
-          this.live.delete(entry)
+      state = 'released'
+      cancel()
+      for (const { resource } of images.values()) {
+        if (resource) this.release(resource)
+      }
+      images.clear()
+    }
+    const remaining = images.entries()
+    const ready = Promise.all(Array.from({ length: Math.min(4, images.size) }, async () => {
+      for (const [source, entry] of remaining) {
+        if (this.closed) return
+        const resource = (entry.resource = this.acquire(source))
+        if (resource) await Promise.race([resource.ready, cancelled])
+        if (state === 'released') return
+        if (!resource?.url || this.resources.get(source) !== resource) {
+          images.delete(source)
+          if (resource) {
+            this.finishLoading(resource)
+            this.release(resource)
+          }
         }
       }
-      acquired.clear()
-    }
-    if (this.closed) {
-      release()
-      return { content, loaded, release }
-    }
+    })).then(() => {
+      if (this.closed || !images.size) release()
+    })
     return {
-      content: content.replace(IMAGE_TAG, (tag) =>
-        !IS_IMAGE_TAG.test(tag) || /\bsrcset\s*=/i.test(tag)
-          ? tag
-          : tag.replace(ATTRIBUTE, (attribute, prefix: string, quote: string, value: string) => {
-              if (!/^(?:src|(?:xlink:)?href)\s*=/i.test(prefix)) return attribute
-              const entry = acquired.get(attributeValue(value))
-              return entry ? `${prefix}${quote}${entry.url}${quote}` : attribute
-            }),
-      ),
+      ready,
+      images,
+      serialize: (render) => {
+        const changed: [Attr, string][] = []
+        try {
+          for (const [source, { resource, attributes }] of images) {
+            const url = this.resources.get(source) === resource ? resource?.url : undefined
+            if (!url) continue
+            for (const attribute of attributes) {
+              if (attribute.value !== source) continue
+              changed.push([attribute, source])
+              attribute.value = url
+            }
+          }
+          return render()
+        } finally {
+          for (const [attribute, source] of changed) attribute.value = source
+        }
+      },
       loaded,
       release,
     }
   }
 
-  releaseCache() {
-    this.generation++
-    for (const pending of this.pending.values()) pending.controller.abort()
-    this.pending.clear()
-    for (const entry of this.cached.values()) retire(entry)
-  }
-
   destroy() {
     this.closed = true
-    this.releaseCache()
-    for (const entry of this.live) revoke(entry)
-    this.live.clear()
-    scopes.delete(this)
+    this.chapter.clear()
+    for (const resource of this.resources.values()) this.dispose(resource)
   }
 }

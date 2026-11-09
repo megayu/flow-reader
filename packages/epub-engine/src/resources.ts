@@ -13,6 +13,7 @@ export interface ResourceOptions {
   request?: SectionRequest
   rootUrl?: string
   containerRootUrl?: string
+  imageCandidates?: readonly string[]
 }
 type SeenUrls = Record<string, boolean>
 type ReplacementUrls = (string | null | undefined)[]
@@ -46,7 +47,7 @@ import { ImageResourceScope } from './image-resources'
  * @param {string} [options.containerRootUrl]
  */
 class Resources {
-  readonly imageResources = new ImageResourceScope()
+  readonly imageResources?: ImageResourceScope
   declare settings: ResourceOptions & { replacements: string }
   declare ownedBlobUrls: Set<string>
   declare manifest: PackagingManifestObject
@@ -72,6 +73,9 @@ class Resources {
       containerRootUrl: options && options.containerRootUrl,
     }
     this.ownedBlobUrls = new Set()
+    if (options?.imageCandidates?.length) {
+      this.imageResources = new ImageResourceScope(options.imageCandidates)
+    }
 
     this.process(manifest)
   }
@@ -687,7 +691,7 @@ class Resources {
   }
 
   destroy() {
-    this.imageResources.destroy()
+    this.imageResources?.destroy()
     if (this.ownedBlobUrls) {
       this.ownedBlobUrls.forEach((url) => {
         try {

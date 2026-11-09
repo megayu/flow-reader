@@ -323,6 +323,8 @@ pub struct BookReaderSource {
     pub(super) updated_book: Option<BookRecord>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub(super) reading_metrics: Option<ReadingMetrics>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub(super) image_candidates: Vec<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

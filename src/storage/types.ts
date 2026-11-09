@@ -62,6 +62,7 @@ export interface BookReaderSource {
   url: string
   rootUrl?: string
   readingMetrics?: ReadingMetrics
+  imageCandidates?: string[]
 }
 
 export interface BookReaderPreparation {

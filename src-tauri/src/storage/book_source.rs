@@ -537,18 +537,32 @@ pub(super) fn get_book_reader_source_impl(
     let content_mode = inspect_and_store_book_content_access(storage, book)?;
     let reads_archive = book.source_format == BookSourceFormat::Epub
         && (!book.editable || content_mode == BookContentMode::ArchiveOnly);
-    let (mode, source_path, root_path, updated_book) = if reads_archive {
+    let (mode, source_path, root_path, updated_book, mut image_candidates) = if reads_archive {
         let book_path = available_book_source_path(storage, book)?;
         let current_book = storage.stored_book(&book.id)?;
         let updated_book = (current_book.content_mode != book.content_mode || current_book.editable != book.editable)
             .then(|| commands::get_book_impl(storage, book.id.clone()))
             .transpose()?
             .flatten();
-        (BookReaderSourceMode::Epub, book_path, None, updated_book)
+        (BookReaderSourceMode::Epub, book_path, None, updated_book, Vec::new())
     } else {
         let opf_path = ensure_book_package_path(storage, tasks, book)?;
+        let mut candidates = Vec::new();
         if let Ok(opf_xml) = read_epub_xml_file(&opf_path, "EPUB package document") {
             deobfuscate_unpacked_idpf_fonts(&unpacked_dir, &opf_xml)?;
+            if book.source_format == BookSourceFormat::Epub
+                && let Ok(relative_opf) = opf_path.strip_prefix(&unpacked_dir)
+            {
+                let relative_opf = relative_opf.to_string_lossy().replace('\\', "/");
+                candidates = publication::image_candidates(
+                    &relative_opf,
+                    &opf_xml,
+                    &mut publication::UnpackedPublicationSource::new(&unpacked_dir),
+                )
+                .iter()
+                .map(|path| path_to_client_string(&unpacked_dir.join(path)))
+                .collect();
+            }
         }
         let current_book = storage.stored_book(&book.id)?;
         let updated_book = (current_book.source_revision != book.source_revision
@@ -556,7 +570,13 @@ pub(super) fn get_book_reader_source_impl(
             .then(|| commands::get_book_impl(storage, book.id.clone()))
             .transpose()?
             .flatten();
-        (BookReaderSourceMode::Opf, opf_path, Some(unpacked_dir), updated_book)
+        (
+            BookReaderSourceMode::Opf,
+            opf_path,
+            Some(unpacked_dir),
+            updated_book,
+            candidates,
+        )
     };
 
     let archive_urls = (mode == BookReaderSourceMode::Epub)
@@ -576,6 +596,7 @@ pub(super) fn get_book_reader_source_impl(
     .ok();
 
     let (mode, path, root_path) = if let Some(urls) = archive_urls {
+        image_candidates = urls.image_candidates;
         (BookReaderSourceMode::Opf, urls.package, Some(urls.root))
     } else {
         (
@@ -591,6 +612,7 @@ pub(super) fn get_book_reader_source_impl(
         root_path,
         updated_book,
         reading_metrics,
+        image_candidates,
     })
 }
 

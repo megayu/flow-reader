@@ -37,6 +37,7 @@ interface NativeBookReaderPreparation {
   rootPath?: string
   updatedBook?: BookRecord
   readingMetrics?: BookReaderSource['readingMetrics']
+  imageCandidates?: string[]
 }
 
 type ImportProgressChannel = Channel<Omit<BookImportProgress, 'importId'>>

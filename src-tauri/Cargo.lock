@@ -1084,13 +1084,10 @@ dependencies = [
 name = "flow-reader"
 version = "0.1.6"
 dependencies = [
- "block2",
  "chrono",
- "dispatch2",
  "encoding_rs",
  "flate2",
  "flow-epub-cover",
- "gio",
  "image",
  "mdict-rs",
  "memmap2",

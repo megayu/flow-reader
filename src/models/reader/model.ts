@@ -13,7 +13,7 @@ import { IS_SERVER } from '@/env'
 import { openSupportedExternalUrl } from '@/externalLink'
 import { normalizeHrefPath, safeDecodeHref, sameHref } from '@/noteLinks'
 import { emitReaderOpenError, type ReaderOpenErrorStage } from '@/reader/errorEvents'
-import { isRecentReadingEnabled } from '@/state'
+import { isRecentReadingEnabled, useAppStore } from '@/state'
 import {
   type BookModeSwitchResolution,
   type BookModeSwitchResult,
@@ -910,6 +910,7 @@ export class BookTab {
       }
     } finally {
       this.acceptedLocationRequests.delete(requestId)
+      reader.refreshImageResourceActivity()
     }
   }
 
@@ -1664,7 +1665,7 @@ export class BookTab {
   destroy() {
     if (this.destroyPromise) return this.destroyPromise
 
-    this.epub?.resources?.imageResources.destroy()
+    this.epub?.resources?.imageResources?.destroy()
     this.searchController.cancel()
     this.renderGeneration++
     this.destroyPromise = this.destroyAfterFlush()
@@ -2091,6 +2092,7 @@ export class BookTab {
           : {
               requestMethod: createRevisionedEpubRequest(() => this.book),
               containerRootUrl: source.rootUrl,
+              imageCandidates: source.imageCandidates,
             },
       )
       await openingBook.open(source.url, source.mode === 'epub' ? 'epub' : undefined)
@@ -2172,6 +2174,7 @@ export class BookTab {
     }
 
     this.epub = epub
+    reader.refreshImageResourceActivity([this])
     this.rendition = rendition
     this._el = ref(el)
     clearRendering()
@@ -2320,6 +2323,7 @@ export class Reader {
   selectedIndex = -1
   private closingBooks = new Map<string, Promise<BookTab>>()
   private switchingBooks = new Map<string, Promise<BookModeSwitchResult>>()
+  private imageWindowFocused = true
 
   get focusedBookTab() {
     return this.tabs[this.selectedIndex]
@@ -2327,6 +2331,20 @@ export class Reader {
 
   getOpenBookIds() {
     return this.tabs.map((tab) => tab.book.id)
+  }
+
+  setImageWindowFocused(focused: boolean) {
+    this.imageWindowFocused = focused
+    this.refreshImageResourceActivity()
+  }
+
+  refreshImageResourceActivity(tabs: readonly BookTab[] = this.tabs) {
+    if (!tabs.length) return
+    const foreground =
+      this.imageWindowFocused && !globalThis.document?.hidden && useAppStore.getState().viewMode === 'reader'
+    const selected = foreground ? this.focusedBookTab : undefined
+    const now = Date.now()
+    for (const tab of tabs) tab.epub?.resources?.imageResources?.updateForeground(tab === selected, now)
   }
 
   private setSelectedRuntimeActive(active: boolean) {
@@ -2366,6 +2384,7 @@ export class Reader {
     this.tabs.splice(this.selectedIndex, 0, tab)
     this.paneTabs.push(tab)
     setTabRuntimeActive(tab, true)
+    this.refreshImageResourceActivity()
     return tab
   }
 
@@ -2386,6 +2405,7 @@ export class Reader {
     this.setSelectedRuntimeActive(false)
     this.selectedIndex = index
     this.setSelectedRuntimeActive(true)
+    this.refreshImageResourceActivity()
   }
 
   selectLastTab() {
@@ -2520,7 +2540,9 @@ export class Reader {
     const tab = this.tabs[index]
     if (!tab) return Promise.resolve(undefined)
 
+    const wasSelected = index === this.selectedIndex
     this.detachTab(index)
+    if (wasSelected) this.refreshImageResourceActivity()
     return this.disposeDetachedTab(tab)
   }
 

@@ -4,8 +4,6 @@ import { invoke } from '@tauri-apps/api/core'
 import { getCurrentWebviewWindow } from '@tauri-apps/api/webviewWindow'
 import { createRoot } from 'react-dom/client'
 
-import { releaseImageResourceCaches } from '@flow/epub-engine'
-
 import { FlowReader } from './app/FlowReader'
 import { installReloadShortcut, installSettingsShortcut } from './keyboard'
 import { reader } from './models/reader'
@@ -18,6 +16,24 @@ if (!root) throw new Error('Flow Reader root element was not found')
 const appRoot = root
 installReloadShortcut(document, reloadCurrentView)
 installSettingsShortcut(document, () => useAppStore.getState().setSettingsDialogOpen(true))
+void trackImageResourceActivity().catch(console.error)
+
+async function trackImageResourceActivity() {
+  document.addEventListener('visibilitychange', () => reader.refreshImageResourceActivity())
+  useAppStore.subscribe((state, previous) => {
+    if (state.viewMode !== previous.viewMode) reader.refreshImageResourceActivity()
+  })
+
+  const win = getCurrentWebviewWindow()
+  let sawFocusEvent = false
+  await win.onFocusChanged(({ payload }) => {
+    sawFocusEvent = true
+    reader.setImageWindowFocused(payload)
+  })
+  const focused = await win.isFocused()
+  // A native event takes precedence over the asynchronous initial snapshot.
+  if (!sawFocusEvent) reader.setImageWindowFocused(focused)
+}
 
 const windowUiStateReady = invoke<WindowUiState>('get_window_ui_state').then(initializeWindowUiState)
 const recentBooksReady = db.recentBooks.get().catch((error) => {
@@ -48,7 +64,6 @@ async function handleAppCloseRequested() {
 }
 
 async function start() {
-  await getCurrentWebviewWindow().listen('flow-memory-pressure', releaseImageResourceCaches)
   await getCurrentWebviewWindow().listen('flow-app-close-requested', handleAppCloseRequested)
   await windowUiStateReady
 

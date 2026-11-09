@@ -280,6 +280,12 @@ class Section {
     return replaceBase(this.document!, this as Section & { idref: string })
   }
 
+  serialize(contents: Element, blockScripts?: boolean) {
+    return blockScripts
+      ? serializeWithScriptBlockingCsp(contents.ownerDocument, contents, this.type)
+      : new XMLSerializer().serializeToString(contents)
+  }
+
   /**
    * Render the contents of a section
    * @param  {method} [_request] a request method to use for loading
@@ -293,16 +299,7 @@ class Section {
     this.load(_request)
       .then(
         function (this: Section, contents: Element) {
-          if (options.blockScripts) {
-            this.output = serializeWithScriptBlockingCsp(
-              this.document!,
-              contents,
-              this.type,
-            )
-          } else {
-            var serializer = new XMLSerializer()
-            this.output = serializer.serializeToString(contents)
-          }
+          this.output = this.serialize(contents, options.blockScripts)
           return this.output
         }.bind(this),
       )

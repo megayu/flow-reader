@@ -9,9 +9,9 @@ use zip::ZipArchive;
 use super::{
     epub_import::{
         access::{EPUB_SEARCH_DOCUMENT_READ_LIMIT, EPUB_XML_READ_LIMIT, read_bounded_bytes},
-        normalize_zip_path,
+        join_zip_path, normalize_zip_path, parent_zip_path,
     },
-    export::{percent_decode_path, zip_path_candidates},
+    export::{percent_decode_zip_path, zip_path_candidates},
     text_import::decode_text_bytes,
 };
 
@@ -95,7 +95,7 @@ impl<R: Read + Seek> PublicationSource for ArchivePublicationSource<R> {
                 .archive
                 .index_for_name_raw(candidate.as_bytes())
                 .ok_or(zip::result::ZipError::FileNotFound)
-                .and_then(|index| self.archive.by_index(index));
+                .and_then(|index| self.archive.by_index_data(index));
             match entry {
                 Ok(entry) => return Ok(entry.size()),
                 Err(error) => last_error = error.to_string(),
@@ -119,8 +119,42 @@ pub(super) fn read_package_document(source: &mut impl PublicationSource) -> Resu
     Ok((opf_path, opf))
 }
 
+pub(super) fn image_candidates(opf_path: &str, opf: &str, source: &mut impl PublicationSource) -> Vec<String> {
+    let Ok(doc) = roxmltree::Document::parse(opf) else {
+        return Vec::new();
+    };
+    let Some(manifest) = doc.descendants().find(|node| node.has_tag_name("manifest")) else {
+        return Vec::new();
+    };
+    let mut seen = std::collections::HashSet::new();
+    manifest
+        .children()
+        .filter(|item| item.has_tag_name("item"))
+        .filter_map(|item| {
+            let href = item.attribute("href")?.split(['?', '#']).next()?.replace('\\', "/");
+            if href.is_empty() || href.contains(':') || href.starts_with("//") {
+                return None;
+            }
+            let path = normalize_zip_path(join_zip_path(parent_zip_path(opf_path), &href));
+            let decoded = percent_decode_zip_path(&path);
+            let extension = decoded.rsplit_once('.')?.1.to_ascii_lowercase();
+            if !matches!(
+                extension.as_str(),
+                "png" | "jpg" | "jpeg" | "jpe" | "gif" | "webp" | "avif" | "bmp"
+            ) || !seen.insert(decoded.clone())
+            {
+                return None;
+            }
+            const MIN_BYTES: u64 = 11 * 256 * 1024;
+            const MAX_BYTES: u64 = 16 * 1024 * 1024;
+            let bytes = source.byte_length(&path).ok()?;
+            (MIN_BYTES..=MAX_BYTES).contains(&bytes).then_some(decoded)
+        })
+        .collect()
+}
+
 fn resolve_unpacked_publication_path(root: &Path, href: &str) -> Result<PathBuf, String> {
-    let decoded = percent_decode_path(&href.replace('\\', "/")).replace('\\', "/");
+    let decoded = percent_decode_zip_path(&href.replace('\\', "/")).replace('\\', "/");
     if decoded.is_empty() || decoded.contains('%') {
         return Err("EPUB derived resource has an invalid encoded path".to_string());
     }

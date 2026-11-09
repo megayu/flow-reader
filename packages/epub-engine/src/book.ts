@@ -20,6 +20,7 @@ export interface BookOptions {
   encoding?: string
   replacements?: string
   containerRootUrl?: string
+  imageCandidates?: readonly string[]
   canonical?: (path: string) => string
   openAs?: string
 }
@@ -614,6 +615,7 @@ class Book extends EventEmitter<{ openFailed: [Error] }> {
       request: this.request.bind(this),
       rootUrl: this.packageRootUrl(),
       containerRootUrl: this.settings.containerRootUrl,
+      imageCandidates: this.settings.imageCandidates,
       replacements:
         this.settings.replacements || (this.archived ? 'blobUrl' : 'none'),
     })

@@ -197,7 +197,6 @@ class IframeView extends EventEmitter<ViewEvents> {
   declare _height: number
   declare elementBounds: { width: number; height: number } | undefined
   declare supportsSrcdoc: boolean | undefined
-  declare sectionRender: Promise<string> | undefined
   declare _textWidth: number | undefined
   declare _contentWidth: number | undefined
   declare _contentPageCount: number | undefined
@@ -382,19 +381,8 @@ class IframeView extends EventEmitter<ViewEvents> {
     // Fit to size of the container, apply padding
     this.size()
 
-    if (!this.sectionRender) {
-      this.sectionRender = this.section.render(request, {
-        blockScripts: !this.settings.allowScriptedContent,
-      })
-    }
-
     // Render Chain
-    return this.sectionRender
-      .then(
-        function (this: IframeView, contents: string) {
-          return this.load(contents)
-        }.bind(this),
-      )
+    return this.loadSection(request)
       .then(
         function (this: IframeView) {
           // find and report the writingMode axis
@@ -1356,20 +1344,38 @@ class IframeView extends EventEmitter<ViewEvents> {
 
   private imageResourceLease?: ImageResourceLease
 
+  getImageResourceLease() {
+    return this.imageResourceLease
+  }
+
+  private async loadSection(request?: SectionRequest) {
+    const blockScripts = !this.settings.allowScriptedContent
+    const scope = this.section.imageResources
+    // Serialized hooks may replace the canonical output; preserve that path.
+    if (!scope || this.section.hooks.serialize.list().length) {
+      return this.load(await this.section.render(request, { blockScripts }))
+    }
+
+    const contents = await this.section.load(request)
+    if (this.destroyed) throw new Error('Iframe view destroyed before section loaded')
+    const lease = scope.borrow(contents)
+    this.imageResourceLease = lease
+    await lease?.ready
+    if (this.destroyed) throw new Error('Iframe view destroyed before image resources loaded')
+    const serialize = () => this.section.serialize(contents, blockScripts)
+    const loaded = await this.load(lease ? lease.serialize(serialize) : serialize())
+    lease?.loaded()
+    return loaded
+  }
+
   async load(contents: string) {
-    const lease = await this.section.imageResources?.prepare(contents)
     if (this.destroyed) {
-      lease?.release()
       throw new Error('Iframe view destroyed before image resources loaded')
     }
-    this.imageResourceLease?.release()
-    this.imageResourceLease = lease
-    contents = lease?.content ?? contents
     var loading = new defer<Contents>()
     var loaded = loading.promise
 
     if (!this.iframe) {
-      lease?.release()
       loading.reject(new Error('No Iframe Available'))
       return loaded
     }
@@ -1380,7 +1386,6 @@ class IframeView extends EventEmitter<ViewEvents> {
         if (this._loading === loading) this._loading = undefined
       },
       () => {
-        lease?.release()
         if (this._loading === loading) this._loading = undefined
       },
     )
@@ -1415,7 +1420,6 @@ class IframeView extends EventEmitter<ViewEvents> {
   }
 
   onLoad(event: Event, promise: Deferred<Contents>) {
-    this.imageResourceLease?.loaded()
     this.window = this.iframe!.contentWindow as LegacyWindow
     this.document = this.iframe!.contentDocument
 

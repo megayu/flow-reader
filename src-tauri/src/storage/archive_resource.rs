@@ -10,7 +10,7 @@ use zip::{ZipArchive, read::ZipArchiveMetadata};
 use super::{
     AppStorage,
     export::zip_path_candidates,
-    publication::{ArchivePublicationSource, read_package_document},
+    publication::{ArchivePublicationSource, image_candidates, read_package_document},
 };
 
 #[derive(Clone)]
@@ -70,6 +70,7 @@ pub(super) struct ArchiveResourceSession {
 pub(super) struct ArchiveResourceUrls {
     pub(super) package: String,
     pub(super) root: String,
+    pub(super) image_candidates: Vec<String>,
 }
 
 impl AppStorage {
@@ -77,7 +78,9 @@ impl AppStorage {
         let reader = PositionedFile::open(path).map_err(|error| error.to_string())?;
         let archive = ZipArchive::new(reader.clone()).map_err(|error| error.to_string())?;
         let metadata = archive.metadata();
-        let (package_path, _) = read_package_document(&mut ArchivePublicationSource::new(archive))?;
+        let mut publication = ArchivePublicationSource::new(archive);
+        let (package_path, opf) = read_package_document(&mut publication)?;
+        let candidates = image_candidates(&package_path, &opf, &mut publication);
         let session = ArchiveResourceSession { reader, metadata };
         self.inner
             .archive_resources
@@ -88,6 +91,10 @@ impl AppStorage {
         let root = archive_resource_root_url(book_id);
         Ok(ArchiveResourceUrls {
             package: format!("{root}{}", percent_encode_path(&package_path)),
+            image_candidates: candidates
+                .iter()
+                .map(|path| format!("{root}{}", percent_encode_path(path)))
+                .collect(),
             root,
         })
     }

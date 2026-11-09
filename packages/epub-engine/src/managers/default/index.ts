@@ -1731,19 +1731,7 @@ class DefaultViewManager extends EventEmitter<ManagerEvents> {
   ) {
     var view = this.createView(section, forceRight, forceLeft, spreadSlot)
     this.views.append(view)
-
-    view.onDisplayed = this.afterDisplayed.bind(this)
-    view.onResize = this.afterResized.bind(this)
-
-    view.on(EVENTS.VIEWS.AXIS, (axis) => {
-      this.updateAxis(axis)
-    })
-
-    view.on(EVENTS.VIEWS.WRITING_MODE, (mode) => {
-      this.updateWritingMode(mode)
-    })
-
-    return view.display(this.request)
+    return this.displayNewView(view)
   }
 
   prepend(
@@ -1759,7 +1747,10 @@ class DefaultViewManager extends EventEmitter<ManagerEvents> {
     })
 
     this.views.prepend(view)
+    return this.displayNewView(view)
+  }
 
+  private async displayNewView(view: IframeView) {
     view.onDisplayed = this.afterDisplayed.bind(this)
     view.onResize = this.afterResized.bind(this)
 
@@ -1771,7 +1762,16 @@ class DefaultViewManager extends EventEmitter<ManagerEvents> {
       this.updateWritingMode(mode)
     })
 
-    return view.display(this.request)
+    try {
+      return await view.display(this.request)
+    } catch (error) {
+      if (this.views.indexOf(view) !== -1) {
+        // A failed page invalidates the entire hidden spread under construction.
+        if (this.views.hidden) this.clear()
+        else this.views.remove(view)
+      }
+      throw error
+    }
   }
 
   counter(bounds: ViewResize) {

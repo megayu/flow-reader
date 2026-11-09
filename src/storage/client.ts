@@ -614,6 +614,7 @@ export const db = {
           url: filePathToUrl(result.path),
           rootUrl: result.rootPath ? filePathToUrl(result.rootPath) : undefined,
           readingMetrics: result.readingMetrics,
+          imageCandidates: result.imageCandidates?.map(filePathToUrl),
         },
         updatedBook,
       }
