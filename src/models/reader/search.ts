@@ -1,4 +1,5 @@
 import { debounce } from '@github/mini-throttle/decorators'
+import { ref } from 'valtio'
 
 import { searchBookText } from '../../storage'
 
@@ -55,6 +56,9 @@ export class BookSearchController {
     try {
       const results = await searchBook(tab, keyword, controller.signal)
       if (this.isCurrent(tab, keyword, requestVersion)) {
+        if (results) {
+          for (const group of results) ref(group.offsets)
+        }
         tab.results = results
       }
     } catch {

@@ -231,7 +231,7 @@ export interface BookSearchResult {
   excerpt: string
   description?: string | null
   sectionIndex: number
-  offsets: number[]
+  offsets: readonly number[]
   expanded: boolean
 }
 
