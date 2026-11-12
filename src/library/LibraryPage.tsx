@@ -65,7 +65,7 @@ import { isGlobalKeyboardShortcutBlocked } from '../keyboard'
 import type { MessageKey } from '../locales'
 import { completeTabOpen, reader, useReaderSnapshot } from '../models/reader'
 import { type ReaderOpenErrorStage, subscribeReaderOpenErrors } from '../reader/errorEvents'
-import { createTextSearchIndex, matchesTextSearch } from '../search/textSearch'
+import { useTextSearch } from '../search/useTextSearch'
 import { getShortcutChords } from '../shortcuts'
 import {
   defaultLibraryDisplay,
@@ -781,10 +781,6 @@ const Library: React.FC<LibraryProps> = ({
   const titleSearchQueryRef = useRef(returnState?.titleSearchQuery ?? '')
   const selectionAnchorIdRef = useRef<string | undefined>(undefined)
   const rangeSelectionSessionRef = useRef<LibraryRangeSelectionSession | undefined>(undefined)
-  const titleSearchIndexByBookId = useMemo(
-    () => new Map((books ?? []).map((book) => [book.id, createTextSearchIndex([getBookDisplayTitle(book)])])),
-    [books],
-  )
   const stableFilteredBooks = useMemo(
     () =>
       filterBooksByLibraryFilters(
@@ -795,13 +791,7 @@ const Library: React.FC<LibraryProps> = ({
       ),
     [authorFilters, books, sortDirection, sortField, statusFilters, tagFilters],
   )
-  const sortedBooks = useMemo(() => {
-    if (!debouncedTitleSearchQuery.trim()) return stableFilteredBooks
-
-    return stableFilteredBooks.filter((book) =>
-      matchesTextSearch(titleSearchIndexByBookId.get(book.id) ?? [], debouncedTitleSearchQuery),
-    )
-  }, [debouncedTitleSearchQuery, stableFilteredBooks, titleSearchIndexByBookId])
+  const sortedBooks = useTextSearch(stableFilteredBooks, debouncedTitleSearchQuery, getBookDisplayTitle)
   const visibleBookIds = useMemo(() => sortedBooks.map((book) => book.id), [sortedBooks])
   const recentBooks = useMemo(() => {
     if (!settings.showRecentBooks || !recentBookIds?.length) return []

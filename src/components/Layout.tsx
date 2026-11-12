@@ -66,7 +66,7 @@ import { DeleteLibraryTagDialog, EditLibraryTagDialog } from '../library/Library
 import { readingStatusMessageKey } from '../library/model'
 import type { MessageKey } from '../locales'
 import { useReaderSnapshot } from '../models/reader'
-import { createTextSearchIndex, createTextSearchQuery, matchesTextSearch } from '../search/textSearch'
+import { getSearchName, useTextSearch } from '../search/useTextSearch'
 import { getShortcutChords, type ShortcutActionId } from '../shortcuts'
 import {
   type LibraryAction,
@@ -663,29 +663,16 @@ function LibraryFilterView({ className }: ComponentProps<'div'>) {
     [books, pins?.tagIds, statusFilters, tags],
   )
   const tagsById = useMemo(() => new Map((tags ?? []).map((tag) => [tag.id, tag])), [tags])
-  const facetSearchKeywords = useMemo(() => createTextSearchQuery(facetSearchQuery), [facetSearchQuery])
-  const authorSearchIndexByName = useMemo(
-    () => new Map(authorOptions.map((option) => [option.name, createTextSearchIndex([option.name])])),
-    [authorOptions],
+  const visibleAuthorOptions = useTextSearch(
+    authorOptions,
+    facetSearch?.target === 'author' ? facetSearchQuery : '',
+    getSearchName,
   )
-  const tagSearchIndexById = useMemo(
-    () => new Map(tagOptions.map((option) => [option.id, createTextSearchIndex([option.name])])),
-    [tagOptions],
+  const visibleTagOptions = useTextSearch(
+    tagOptions,
+    facetSearch?.target === 'tag' ? facetSearchQuery : '',
+    getSearchName,
   )
-  const visibleAuthorOptions = useMemo(() => {
-    if (facetSearch?.target !== 'author' || !facetSearchKeywords.length) return authorOptions
-
-    return authorOptions.filter((option) =>
-      matchesTextSearch(authorSearchIndexByName.get(option.name) ?? [], facetSearchKeywords),
-    )
-  }, [authorOptions, authorSearchIndexByName, facetSearch?.target, facetSearchKeywords])
-  const visibleTagOptions = useMemo(() => {
-    if (facetSearch?.target !== 'tag' || !facetSearchKeywords.length) return tagOptions
-
-    return tagOptions.filter((option) =>
-      matchesTextSearch(tagSearchIndexById.get(option.id) ?? [], facetSearchKeywords),
-    )
-  }, [facetSearch?.target, facetSearchKeywords, tagOptions, tagSearchIndexById])
   const selectedAuthors = useMemo(() => new Set(authorFilters), [authorFilters])
   const selectedTagIds = useMemo(() => new Set(tagFilters), [tagFilters])
   const hasFilters = statusFilters.length > 0 || authorFilters.length > 0 || tagFilters.length > 0

@@ -2,7 +2,8 @@ import assert from 'node:assert/strict'
 
 import { test } from 'vitest'
 
-import { createTextSearchIndex, matchesTextSearch } from '../../src/search/textSearch.ts'
+import { createTextSearchIndex } from '../../src/search/pinyinTextSearch.ts'
+import { matchesTextSearch } from '../../src/search/textSearch.ts'
 
 function testTextSearchNormalizationAndMatching() {
   const cases = [

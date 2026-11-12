@@ -14,7 +14,7 @@ import {
   useState,
 } from 'react'
 
-import { createTextSearchQuery, matchesTextSearch, type TextSearchIndex } from '@/search/textSearch'
+import { useTextSearch } from '@/search/useTextSearch'
 
 import { IconButton } from '../IconButton'
 
@@ -23,9 +23,11 @@ import { Popover, PopoverAnchor, PopoverContent } from './popover'
 
 interface ComboboxOption {
   label: string
-  searchIndex?: TextSearchIndex
-  searchText?: string
   value: string
+}
+
+function getOptionSearchValues(option: ComboboxOption) {
+  return option.label === option.value ? option.label : [option.label, option.value]
 }
 
 interface ComboboxProps {
@@ -87,15 +89,7 @@ function Combobox({
     if (!editingRef.current) setInputValue(value)
   }, [value])
 
-  const query = useMemo(() => createTextSearchQuery(inputValue), [inputValue])
-  const filteredOptions = useMemo(() => {
-    if (!filtering || !query.length) return options
-
-    return options.filter((option) => {
-      const searchIndex = option.searchIndex ?? [(option.searchText ?? `${option.value} ${option.label}`).toLowerCase()]
-      return matchesTextSearch(searchIndex, query)
-    })
-  }, [filtering, options, query])
+  const filteredOptions = useTextSearch(options, filtering ? inputValue : '', getOptionSearchValues)
 
   const activeOption = activeIndex >= 0 ? filteredOptions[activeIndex] : undefined
 

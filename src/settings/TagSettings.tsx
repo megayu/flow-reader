@@ -16,7 +16,7 @@ import { LibraryFilterChip, type LibraryFilterMenuItem } from '../library/Librar
 import { LibraryFilterChipButton, libraryFilterOptionsClassName } from '../library/LibraryFilterChipButton'
 import { LibraryFilterInput } from '../library/LibraryFilterInput'
 import { DeleteLibraryTagDialog, EditLibraryTagDialog } from '../library/LibraryTagDialogs'
-import { createTextSearchIndex, createTextSearchQuery, matchesTextSearch } from '../search/textSearch'
+import { getSearchName, useTextSearch } from '../search/useTextSearch'
 import { db } from '../storage/client'
 import type { LibraryTagRecord } from '../storage/types'
 
@@ -37,18 +37,7 @@ export function TagSettings() {
   const orderedTags = useMemo(() => orderLibraryTags(tags ?? [], pins?.tagIds), [pins?.tagIds, tags])
   const pinnedTagIds = useMemo(() => new Set(pins?.tagIds ?? []), [pins?.tagIds])
   const tagsById = useMemo(() => new Map(orderedTags.map((tag) => [tag.id, tag])), [orderedTags])
-  const searchQuery = useMemo(() => createTextSearchQuery(query), [query])
-  const searchIndexById = useMemo(
-    () => new Map(orderedTags.map((tag) => [tag.id, createTextSearchIndex([tag.name])])),
-    [orderedTags],
-  )
-  const visibleTags = useMemo(
-    () =>
-      searchQuery.length
-        ? orderedTags.filter((tag) => matchesTextSearch(searchIndexById.get(tag.id) ?? [], searchQuery))
-        : orderedTags,
-    [orderedTags, searchIndexById, searchQuery],
-  )
+  const visibleTags = useTextSearch(orderedTags, query, getSearchName)
   const visibleTagIds = useMemo(() => new Set(visibleTags.map((tag) => tag.id)), [visibleTags])
   const allVisibleSelected = visibleTags.length > 0 && visibleTags.every((tag) => selectedTagIds.has(tag.id))
   const referencedTagIds = useMemo(() => new Set((books ?? []).flatMap((book) => book.tagIds ?? [])), [books])

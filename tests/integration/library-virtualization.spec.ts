@@ -44,6 +44,38 @@ test('library find shortcut focuses the title search and selects its query', asy
   ])
 })
 
+test('title search loads pinyin on demand and keeps both literal and initial matches', async ({ page }) => {
+  await installTauriMock(page, { books: [createBook(1, '三体'), createBook(2, 'Star Atlas'), createBook(3, 'Other')] })
+  let requests = 0
+  const loading = Promise.withResolvers<void>()
+  await page.route('**/pinyinTextSearch-*.js', async (route) => {
+    requests++
+    await loading.promise
+    await route.continue()
+  })
+  try {
+    await page.goto('/')
+    const search = page.getByRole('textbox', { name: msg('home.library_search.title') })
+    const cards = page.locator('ul.grid [data-flow-library-book-card]')
+    await expect(cards).toHaveCount(3)
+    await search.fill('三体')
+    await expect(cards).toHaveCount(1)
+    await expect(cards).toContainText(['三体'])
+    expect(requests).toBe(0)
+
+    await search.fill('st')
+    await expect.poll(() => requests).toBe(1)
+    await expect(cards).toHaveCount(1)
+    await expect(cards).toContainText(['Star Atlas'])
+    loading.resolve()
+    await expect(cards).toHaveCount(2)
+    await expect(cards.filter({ hasText: 'Star Atlas' })).toBeVisible()
+    await expect(cards.filter({ hasText: '三体' })).toBeVisible()
+  } finally {
+    loading.resolve()
+  }
+})
+
 test('large libraries mount a bounded window while preserving far books and full-result selection', async ({
   page,
 }) => {
