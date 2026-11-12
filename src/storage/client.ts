@@ -705,7 +705,7 @@ export async function applyFolderImportTags(assignments: FolderImportTagAssignme
       assignments,
     }),
   )
-  result.books.forEach(upsertCachedBook)
+  applyTagBookUpdates(result.books)
   rememberTags(result.tags)
   notify('books', 'tags')
   return result
