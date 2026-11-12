@@ -699,16 +699,14 @@ export function scanImportFolder(root: string, recursive: boolean) {
 export async function applyFolderImportTags(assignments: FolderImportTagAssignment[]) {
   if (!assignments.length) return { books: [], tags: tagsCache ?? [] }
 
-  beginBooksMutation()
-  const result = await trackNativeWrite(
-    invoke('apply_folder_import_tags', {
-      assignments,
-    }),
-  )
-  applyTagBookUpdates(result.books)
-  rememberTags(result.tags)
-  notify('books', 'tags')
-  return result
+  return runTagMutation(async () => {
+    beginBooksMutation()
+    const result = await invoke('apply_folder_import_tags', { assignments })
+    applyTagBookUpdates(result.books)
+    rememberTags(result.tags)
+    notify('books', 'tags')
+    return result
+  })
 }
 
 export async function searchBookText(id: string, keyword: string, limit?: number, signal?: AbortSignal) {
