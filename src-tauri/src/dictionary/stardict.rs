@@ -84,12 +84,12 @@ pub fn prepare_index(master: &Path, cache: &Path) -> Result<(), StarDictError> {
         .map(|path| parse_synonyms(&path, &entries))
         .transpose()?
         .unwrap_or_default();
-    entries.sort_by(|left, right| {
+    entries.sort_unstable_by(|left, right| {
         left.key
             .cmp(&right.key)
             .then_with(|| left.index_offset.cmp(&right.index_offset))
     });
-    synonyms.sort_by(|left, right| {
+    synonyms.sort_unstable_by(|left, right| {
         left.key
             .cmp(&right.key)
             .then_with(|| left.target_index_offset.cmp(&right.target_index_offset))
