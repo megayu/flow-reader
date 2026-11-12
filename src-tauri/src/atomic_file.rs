@@ -1,6 +1,6 @@
 use std::{
     fs::{self, OpenOptions},
-    io::{self, Write},
+    io::{self, BufWriter, Write},
     path::Path,
     sync::atomic::{AtomicU64, Ordering},
 };
@@ -65,13 +65,15 @@ pub(crate) fn cleanup_interrupted_json_write(path: &Path) -> Result<(), String> 
 
 /// Publishes a complete JSON file without moving or deleting the old destination first.
 pub(crate) fn write_json<T: Serialize>(path: &Path, value: &T, durability: Durability) -> Result<(), String> {
-    let data = serde_json::to_vec_pretty(value)
-        .map_err(|error| format!("Cannot serialize JSON for {}: {error}", path.display()))?;
     if let Some(parent) = path.parent() {
         fs::create_dir_all(parent)
             .map_err(|error| format!("Cannot create parent directory for {}: {error}", path.display()))?;
     }
-    write_file(path, durability, |file| file.write_all(&data))
+    write_file(path, durability, |file| {
+        let mut writer = BufWriter::new(file);
+        serde_json::to_writer_pretty(&mut writer, value)?;
+        writer.flush()
+    })
 }
 
 /// The callback must flush its buffers and close source handles before returning.
