@@ -961,7 +961,11 @@ fn text_preview_does_not_retain_full_document_for_later_import() {
     ));
     let source = root.join("novel.txt");
     fs::create_dir_all(&root).unwrap();
-    let original_bytes = "\u{feff}第1章 开始\r\n第一段👀。\r\n&#128064; &amp; 👩‍💻\r\n".as_bytes();
+    let original = format!(
+        "\u{feff}第1章 开始\r\n{}\r\n第2章 后续\r\n&#128064; &amp; 👩‍💻\r\n",
+        "👀".repeat(8000)
+    );
+    let original_bytes = original.as_bytes();
     fs::write(&source, original_bytes).unwrap();
     let storage = test_storage_with_books(&root, Vec::new());
     let tasks = TaskService::default();
@@ -975,6 +979,9 @@ fn text_preview_does_not_retain_full_document_for_later_import() {
     )
     .unwrap();
     assert_eq!(previews.len(), 1);
+    assert_eq!(previews[0].sample.chars().count(), 2048);
+    assert!(previews[0].sample.starts_with("第1章 开始\n👀"));
+    assert_eq!(previews[0].chapters.last().unwrap().title, "第2章 后续");
     assert_eq!(storage.text_import_prepare_run_count(), 1);
 
     let books = import_text_paths_strict_for_test(
@@ -2970,7 +2977,8 @@ fn requires_whitespace_before_named_default_headings() {
     );
 
     for heading in ["序", "序章", "前言 标题", "番外", "番外一", "番外一 标题", "番外 1"] {
-        let document = parse_text_import_document(&format!("{heading}\n正文。"), "测试书", None);
+        let source_text = format!("{heading}\n正文。");
+        let document = parse_text_import_document(&source_text, "测试书", None);
         assert_eq!(document.sections[0].title, heading);
         assert_eq!(document.sections[0].paragraphs, vec!["正文。"]);
     }
@@ -2983,7 +2991,8 @@ fn requires_whitespace_before_named_default_headings() {
         "序言写得不错",
         "番外一写得不错",
     ] {
-        let document = parse_text_import_document(&format!("{line}\n正文。"), "测试书", None);
+        let source_text = format!("{line}\n正文。");
+        let document = parse_text_import_document(&source_text, "测试书", None);
         assert_eq!(document.sections[0].title, "测试书", "{line}");
         assert_eq!(document.sections[0].paragraphs, vec![line, "正文。"]);
     }
@@ -3095,7 +3104,8 @@ fn txt_entity_edits_preserve_source_positions_and_rendered_text() {
                 end_offset: end,
                 paragraph_index: Some(0),
             };
-            let original = parse_text_import_document(&format!("Chapter 1 &#x1F440;\n{raw}"), "Book", None);
+            let source_text = format!("Chapter 1 &#x1F440;\n{raw}");
+            let original = parse_text_import_document(&source_text, "Book", None);
             fs::write(root.join("nav.xhtml"), text_nav_xhtml(&original)).unwrap();
             fs::write(
                 text_dir.join("part0001.xhtml"),

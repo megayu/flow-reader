@@ -96,6 +96,17 @@ pub(super) struct DecodedText {
     pub(super) confidence: TextEncodingConfidence,
 }
 
+impl DecodedText {
+    fn utf8(text: String) -> Self {
+        Self {
+            text,
+            encoding: "utf-8".to_string(),
+            encoding_label: "UTF-8".to_string(),
+            confidence: TextEncodingConfidence::High,
+        }
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(super) enum TextEncodingConfidence {
     High,
@@ -105,18 +116,18 @@ pub(super) enum TextEncodingConfidence {
 }
 
 #[derive(Debug, Clone)]
-pub(super) struct TextImportDocument {
+pub(super) struct TextImportDocument<'a> {
     pub(super) title: String,
     pub(super) creator: String,
-    pub(super) sections: Vec<TextImportSection>,
+    pub(super) sections: Vec<TextImportSection<'a>>,
     pub(super) chapters: Vec<TextImportChapterPreview>,
 }
 
 #[derive(Debug, Clone)]
-pub(super) struct TextImportSection {
+pub(super) struct TextImportSection<'a> {
     pub(super) title: String,
     pub(super) parent: Option<String>,
-    pub(super) paragraphs: Vec<String>,
+    pub(super) paragraphs: Vec<&'a str>,
     pub(super) is_group: bool,
 }
 
@@ -133,10 +144,8 @@ pub(super) struct PreparedTextImport {
     pub(super) fallback_creator: String,
     pub(super) size: u64,
     pub(super) hash: String,
-    pub(super) bytes: Vec<u8>,
+    original_bytes: Option<Vec<u8>>,
     pub(super) decoded: DecodedText,
-    pub(super) sample: String,
-    pub(super) document: TextImportDocument,
 }
 
 impl TextImportPreparedKey {
@@ -278,12 +287,7 @@ pub(super) fn decode_text_bytes(bytes: &[u8], encoding: Option<&str>) -> Decoded
 
     if bytes.starts_with(&[0xef, 0xbb, 0xbf]) {
         let text = String::from_utf8_lossy(&bytes[3..]).to_string();
-        return DecodedText {
-            text,
-            encoding: "utf-8".to_string(),
-            encoding_label: "UTF-8".to_string(),
-            confidence: TextEncodingConfidence::High,
-        };
+        return DecodedText::utf8(text);
     }
     if bytes.starts_with(&[0xff, 0xfe]) {
         let (text, had_errors) = decode_with_encoding(&bytes[2..], UTF_16LE);
@@ -313,12 +317,7 @@ pub(super) fn decode_text_bytes(bytes: &[u8], encoding: Option<&str>) -> Decoded
     }
 
     if let Ok(text) = std::str::from_utf8(bytes) {
-        return DecodedText {
-            text: text.to_string(),
-            encoding: "utf-8".to_string(),
-            encoding_label: "UTF-8".to_string(),
-            confidence: TextEncodingConfidence::High,
-        };
+        return DecodedText::utf8(text.to_string());
     }
 
     let sample = sample_text_bytes(bytes);
@@ -561,11 +560,11 @@ fn compile_text_import_rules(input: Option<&TextImportRulesInput>) -> Vec<TextIm
         .collect()
 }
 
-pub(super) fn parse_text_import_document(
-    text: &str,
+pub(super) fn parse_text_import_document<'a>(
+    text: &'a str,
     title: &str,
     rules_input: Option<&TextImportRulesInput>,
-) -> TextImportDocument {
+) -> TextImportDocument<'a> {
     const TARGET_SECTION_CHARS: usize = 12_000;
     const MAX_SECTION_CHARS: usize = 40_000;
 
@@ -573,13 +572,13 @@ pub(super) fn parse_text_import_document(
     let mut sections = Vec::new();
     let mut current_parent: Option<String> = None;
     let mut current_title: Option<String> = None;
-    let mut paragraphs: Vec<String> = Vec::new();
+    let mut paragraphs: Vec<&'a str> = Vec::new();
     let mut found_heading = false;
 
-    let flush_section = |sections: &mut Vec<TextImportSection>,
+    let flush_section = |sections: &mut Vec<TextImportSection<'a>>,
                          current_parent: &Option<String>,
                          current_title: &Option<String>,
-                         paragraphs: &mut Vec<String>| {
+                         paragraphs: &mut Vec<&'a str>| {
         if paragraphs.is_empty() {
             return;
         }
@@ -628,7 +627,7 @@ pub(super) fn parse_text_import_document(
             continue;
         }
 
-        paragraphs.push(line.to_string());
+        paragraphs.push(line);
     }
 
     flush_section(&mut sections, &current_parent, &current_title, &mut paragraphs);
@@ -641,7 +640,6 @@ pub(super) fn parse_text_import_document(
             text.split(['\r', '\n'])
                 .map(str::trim)
                 .filter(|line| !line.is_empty())
-                .map(str::to_string)
                 .collect()
         };
         let mut generated_sections =
@@ -712,13 +710,13 @@ fn text_sections_to_chapter_previews(sections: &[TextImportSection]) -> Vec<Text
     chapters
 }
 
-fn split_paragraphs_into_sections(
+fn split_paragraphs_into_sections<'a>(
     title: &str,
     parent: Option<String>,
-    paragraphs: Vec<String>,
+    paragraphs: Vec<&'a str>,
     target_chars: usize,
     max_chars: usize,
-) -> Vec<TextImportSection> {
+) -> Vec<TextImportSection<'a>> {
     let total_chars = paragraphs.iter().map(|p| p.chars().count()).sum::<usize>();
     if total_chars <= max_chars {
         return vec![TextImportSection {
@@ -1050,7 +1048,6 @@ fn prepare_text_import_entry(
     path: &Path,
     encoding: Option<&str>,
     rules: Option<&TextImportRulesInput>,
-    document_title: Option<&str>,
     key: TextImportPreparedKey,
 ) -> Result<Arc<PreparedTextImport>, String> {
     let bytes = fs::read(path).map_err(|error| error.to_string())?;
@@ -1065,36 +1062,49 @@ fn prepare_text_import_entry(
         .map(|name| name.to_string_lossy().to_string())
         .unwrap_or_else(|| "book.txt".to_string());
     let filename_metadata = text_import_filename_metadata(path, rules);
-    let fallback_title = document_title.map(str::to_string).unwrap_or(filename_metadata.title);
-    let fallback_creator = filename_metadata.creator;
-    let decoded = decode_text_bytes(&bytes, encoding);
-    let sample = decoded
-        .text
+    let hash = hash_text_import_bytes(&bytes);
+    let (decoded, original_bytes) = decode_import_source(bytes, encoding);
+    Ok(Arc::new(PreparedTextImport {
+        path: path.to_path_buf(),
+        filename,
+        fallback_title: filename_metadata.title,
+        fallback_creator: filename_metadata.creator,
+        size: metadata.len(),
+        hash,
+        original_bytes,
+        decoded,
+    }))
+}
+
+fn decode_import_source(bytes: Vec<u8>, encoding: Option<&str>) -> (DecodedText, Option<Vec<u8>>) {
+    // Plain UTF-8 can serve as both the decoded text and the exact source to save.
+    let bytes = if matches!(encoding, None | Some("auto" | "utf-8")) && !bytes.starts_with(&[0xef, 0xbb, 0xbf]) {
+        match String::from_utf8(bytes) {
+            Ok(text) => return (DecodedText::utf8(text), None),
+            Err(error) => error.into_bytes(),
+        }
+    } else {
+        bytes
+    };
+    (decode_text_bytes(&bytes, encoding), Some(bytes))
+}
+
+pub(super) fn create_text_import_preview_from_prepared(
+    prepared: &PreparedTextImport,
+    rules: Option<&TextImportRulesInput>,
+) -> TextImportPreview {
+    let text = &prepared.decoded.text;
+    let chapters = parse_text_import_document(text, &prepared.fallback_title, rules).chapters;
+    let sample: String = text
         .lines()
         .map(str::trim)
         .filter(|line| !line.is_empty())
         .take(8)
-        .collect::<Vec<_>>()
-        .join("\n");
-    let document = parse_text_import_document(&decoded.text, &fallback_title, rules);
-
-    Ok(Arc::new(PreparedTextImport {
-        path: path.to_path_buf(),
-        filename,
-        fallback_title,
-        fallback_creator,
-        size: metadata.len(),
-        hash: hash_text_import_bytes(&bytes),
-        bytes,
-        decoded,
-        sample,
-        document,
-    }))
-}
-
-pub(super) fn create_text_import_preview_from_prepared(prepared: &PreparedTextImport) -> TextImportPreview {
-    let has_text = prepared.decoded.text.chars().any(|ch| !ch.is_whitespace());
-    let status = if !has_text || prepared.decoded.confidence == TextEncodingConfidence::Failed {
+        .enumerate()
+        .flat_map(|(index, line)| (index > 0).then_some('\n').into_iter().chain(line.chars()))
+        .take(2048)
+        .collect();
+    let status = if sample.is_empty() || prepared.decoded.confidence == TextEncodingConfidence::Failed {
         TextImportStatus::Error
     } else if prepared.decoded.confidence == TextEncodingConfidence::Low {
         TextImportStatus::NeedsReview
@@ -1120,13 +1130,13 @@ pub(super) fn create_text_import_preview_from_prepared(prepared: &PreparedTextIm
         selected: status == TextImportStatus::Ready,
         message: if status == TextImportStatus::Error {
             Some("Unable to decode text file".to_string())
-        } else if prepared.document.chapters.is_empty() {
+        } else if chapters.is_empty() {
             Some("No chapters detected; sections will be generated by length".to_string())
         } else {
             None
         },
-        sample: prepared.sample.clone(),
-        chapters: prepared.document.chapters.clone(),
+        sample,
+        chapters,
     }
 }
 
@@ -1165,7 +1175,7 @@ pub(super) fn prepare_text_import(
         tasks.run_cpu(TaskPriority::Foreground, || {
             storage.note_text_import_prepare_run();
             storage.begin_text_import_prepare();
-            let prepared = prepare_text_import_entry(&path, encoding.as_deref(), rules.as_ref(), None, key);
+            let prepared = prepare_text_import_entry(&path, encoding.as_deref(), rules.as_ref(), key);
             storage.end_text_import_prepare();
             prepared
         })
@@ -1182,13 +1192,7 @@ fn materialize_text_publication(
 ) -> Result<PathBuf, String> {
     let title = metadata.get("title").and_then(Value::as_str).unwrap_or_default();
     let creator = metadata.get("creator").and_then(Value::as_str).unwrap_or_default();
-    let reparsed_document;
-    let document = if title == prepared.document.title {
-        &prepared.document
-    } else {
-        reparsed_document = parse_text_import_document(&prepared.decoded.text, title, rules);
-        &reparsed_document
-    };
+    let document = parse_text_import_document(&prepared.decoded.text, title, rules);
     let unpacked_dir = storage.book_dir(id).join(UNPACKED_DIR);
     if unpacked_dir.exists() {
         fs::remove_dir_all(&unpacked_dir).map_err(|error| error.to_string())?;
@@ -1237,11 +1241,11 @@ fn materialize_text_publication(
         .map_err(|error| error.to_string())?;
     }
 
-    fs::write(oebps.join("nav.xhtml"), text_nav_xhtml(document)).map_err(|error| error.to_string())?;
+    fs::write(oebps.join("nav.xhtml"), text_nav_xhtml(&document)).map_err(|error| error.to_string())?;
     let opf = if creator == document.creator {
-        text_content_opf(document, &prepared.decoded.encoding_label)
+        text_content_opf(&document, &prepared.decoded.encoding_label)
     } else {
-        text_content_opf_with_metadata(document, &document.title, creator, &prepared.decoded.encoding_label)
+        text_content_opf_with_metadata(&document, &document.title, creator, &prepared.decoded.encoding_label)
     };
     fs::write(oebps.join("content.opf"), opf).map_err(|error| error.to_string())?;
 
@@ -1252,9 +1256,8 @@ pub(super) fn materialize_library_text_publication(storage: &AppStorage, book: &
     let source_path = available_book_source_path(storage, book)?;
     let encoding = source_encoding_id_from_metadata(&book.metadata);
     let rules = Some(storage.text_import_rules()?);
-    let title = book.metadata.get("title").and_then(Value::as_str).unwrap_or_default();
     let key = text_import_prepared_key(&source_path, encoding.as_deref(), rules.as_ref())?;
-    let prepared = prepare_text_import_entry(&source_path, encoding.as_deref(), rules.as_ref(), Some(title), key)?;
+    let prepared = prepare_text_import_entry(&source_path, encoding.as_deref(), rules.as_ref(), key)?;
     let cover = fs::read(storage.book_dir(&book.id).join("cover.svg"))
         .ok()
         .filter(|data| !data.is_empty())
@@ -1848,7 +1851,11 @@ fn import_text_path_locked(
             let dir = storage.book_dir(&id);
             let source_text_path = dir.join(SOURCE_TEXT_FILE);
             if source_storage == SourceStorage::Managed {
-                fs::write(&source_text_path, &prepared.bytes).map_err(|error| error.to_string())?;
+                fs::write(
+                    &source_text_path,
+                    prepared.original_bytes.as_deref().unwrap_or(decoded.text.as_bytes()),
+                )
+                .map_err(|error| error.to_string())?;
             }
             let cover = create_text_cover_input(&effective_metadata, path.file_stem().and_then(|name| name.to_str()));
             if eager_import_materialization_enabled() {

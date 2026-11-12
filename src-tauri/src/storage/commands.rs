@@ -1020,7 +1020,11 @@ fn preview_text_import_path(
     if should_skip_prepared_text_import_preview(storage, &prepared).unwrap_or(false) {
         create_skipped_text_import_preview(&prepared)
     } else {
-        create_text_import_preview_from_prepared(&prepared)
+        tasks
+            .run_cpu(TaskPriority::Foreground, || {
+                Ok(create_text_import_preview_from_prepared(&prepared, rules))
+            })
+            .unwrap_or_else(|error| create_text_import_error_preview(path, error, rules))
     }
 }
 
