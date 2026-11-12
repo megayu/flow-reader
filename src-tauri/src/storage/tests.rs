@@ -301,12 +301,17 @@ fn book_cover_assets_bound_lossy_webp_dimensions_and_preserve_svg() {
     let storage = test_storage_with_book(&root, test_library_book(BookSourceFormat::Epub));
     fs::create_dir_all(storage.book_dir("book")).unwrap();
 
-    for ((width, height), expected, extension) in [
-        ((640, 960), (320, 480), "jpg"),
-        ((1200, 1600), (320, 427), "png"),
-        ((200, 300), (200, 300), "webp"),
+    for ((width, height), expected, extension, has_alpha) in [
+        ((640, 960), (320, 480), "jpg", false),
+        ((1200, 1600), (320, 427), "png", false),
+        ((200, 300), (200, 300), "webp", false),
+        ((400, 801), (240, 480), "webp", false),
+        ((801, 400), (320, 160), "webp", true),
     ] {
-        let data = if extension == "webp" {
+        let data = if has_alpha {
+            let pixels = vec![128; (width * height * 4) as usize];
+            webp::Encoder::from_rgba(&pixels, width, height).encode(90.0).to_vec()
+        } else if extension == "webp" {
             let pixels = vec![0; (width * height * 3) as usize];
             webp::Encoder::from_rgb(&pixels, width, height).encode(90.0).to_vec()
         } else {
@@ -334,9 +339,16 @@ fn book_cover_assets_bound_lossy_webp_dimensions_and_preserve_svg() {
         .unwrap();
 
         let cover = fs::read(storage.book_dir("book").join("cover.webp")).unwrap();
-        assert_eq!(&cover[12..16], b"VP8 ");
+        if !has_alpha {
+            assert_eq!(&cover[12..16], b"VP8 ");
+        }
         let decoded = webp::Decoder::new(&cover).decode().unwrap();
         assert_eq!((decoded.width(), decoded.height()), expected);
+        assert_eq!(decoded.is_alpha(), has_alpha);
+        if has_alpha {
+            let (pixels, _) = decoded.as_chunks::<4>();
+            assert!(pixels.iter().all(|pixel| pixel[3] == 128));
+        }
         assert!(!storage.book_dir("book").join("cover.jpg").exists());
         assert!(!storage.book_dir("book").join("cover.png").exists());
     }

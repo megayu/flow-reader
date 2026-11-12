@@ -30,29 +30,19 @@ pub(super) fn write_cover(storage: &AppStorage, id: &str, cover: Option<CoverInp
 }
 
 fn library_cover_thumbnail(data: &[u8], extension: &str) -> Option<(String, Vec<u8>)> {
-    let image = if extension == "webp" {
-        let decoded = webp::Decoder::new(data).decode()?;
-        let (width, height) = (decoded.width(), decoded.height());
-        if decoded.is_alpha() {
-            DynamicImage::ImageRgba8(image::RgbaImage::from_raw(width, height, decoded.to_vec())?)
-        } else {
-            DynamicImage::ImageRgb8(image::RgbImage::from_raw(width, height, decoded.to_vec())?)
-        }
-    } else {
-        let format = match extension {
-            "jpg" | "jpeg" => ImageFormat::Jpeg,
-            "png" => ImageFormat::Png,
-            _ => return None,
-        };
-        let reader = ImageReader::with_format(Cursor::new(data), format);
-        let mut decoder = reader.into_decoder().ok()?;
-        let orientation = decoder
-            .orientation()
-            .unwrap_or(image::metadata::Orientation::NoTransforms);
-        let mut image = DynamicImage::from_decoder(decoder).ok()?;
-        image.apply_orientation(orientation);
-        image
+    let format = match extension {
+        "webp" => return Some(("webp".to_string(), webp_cover_thumbnail(data)?.to_vec())),
+        "jpg" | "jpeg" => ImageFormat::Jpeg,
+        "png" => ImageFormat::Png,
+        _ => return None,
     };
+    let reader = ImageReader::with_format(Cursor::new(data), format);
+    let mut decoder = reader.into_decoder().ok()?;
+    let orientation = decoder
+        .orientation()
+        .unwrap_or(image::metadata::Orientation::NoTransforms);
+    let mut image = DynamicImage::from_decoder(decoder).ok()?;
+    image.apply_orientation(orientation);
     let image = if image.width() > LIBRARY_COVER_MAX_WIDTH || image.height() > LIBRARY_COVER_MAX_HEIGHT {
         image.resize(LIBRARY_COVER_MAX_WIDTH, LIBRARY_COVER_MAX_HEIGHT, FilterType::Lanczos3)
     } else {
@@ -66,6 +56,29 @@ fn library_cover_thumbnail(data: &[u8], extension: &str) -> Option<(String, Vec<
         webp::Encoder::from_rgb(pixels.as_raw(), image.width(), image.height()).encode(LIBRARY_COVER_WEBP_QUALITY)
     };
     Some(("webp".to_string(), output.to_vec()))
+}
+
+fn webp_cover_thumbnail(data: &[u8]) -> Option<webp::WebPMemory> {
+    let decoded = webp::Decoder::new(data).decode()?;
+    let (width, height) = (decoded.width(), decoded.height());
+    let layout = decoded.layout();
+    if width <= LIBRARY_COVER_MAX_WIDTH && height <= LIBRARY_COVER_MAX_HEIGHT {
+        return Some(webp::Encoder::new(&decoded, layout, width, height).encode(LIBRARY_COVER_WEBP_QUALITY));
+    }
+
+    let scale = (f64::from(LIBRARY_COVER_MAX_WIDTH) / f64::from(width))
+        .min(f64::from(LIBRARY_COVER_MAX_HEIGHT) / f64::from(height));
+    let target_width = ((f64::from(width) * scale).round() as u32).max(1);
+    let target_height = ((f64::from(height) * scale).round() as u32).max(1);
+    let pixels = if decoded.is_alpha() {
+        let view = image::ImageBuffer::<image::Rgba<u8>, _>::from_raw(width, height, &decoded[..])?;
+        image::imageops::resize(&view, target_width, target_height, FilterType::Lanczos3).into_raw()
+    } else {
+        let view = image::ImageBuffer::<image::Rgb<u8>, _>::from_raw(width, height, &decoded[..])?;
+        image::imageops::resize(&view, target_width, target_height, FilterType::Lanczos3).into_raw()
+    };
+    drop(decoded);
+    Some(webp::Encoder::new(&pixels, layout, target_width, target_height).encode(LIBRARY_COVER_WEBP_QUALITY))
 }
 
 pub(super) fn read_cover(storage: &AppStorage, id: &str) -> Result<Option<String>, String> {
