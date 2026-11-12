@@ -40,9 +40,10 @@ import { useColorScheme } from '../hooks/theme/useColorScheme'
 import { useEventListener } from '../hooks/useEventListener'
 import { useTranslation } from '../hooks/useTranslation'
 import { useTypography } from '../hooks/useTypography'
+import { isEditableKeyboardTarget } from '../keyboard'
 import { type BookTab, completeTabOpen, getBookTabFrameWindows, reader, useReaderSnapshot } from '../models/reader'
 import { revealRestoredBook } from '../reader/reload'
-import { createReaderKeyDownHandler, hasKeyboardCapturingLayer, isEditableTarget } from '../reader/shortcuts'
+import { createReaderKeyDownHandler, hasKeyboardCapturingLayer } from '../reader/shortcuts'
 import { getShortcutChords } from '../shortcuts'
 import { type BookImportProgress, type BookImportResult, db } from '../storage'
 import { createTypographyLayoutSignature, createTypographyStyleSignature, updateCustomStyle } from '../styles'
@@ -680,7 +681,7 @@ const BookPane: React.FC<BookPaneProps> = React.memo(function BookPane({ active,
       if (e.button !== 3) return
       if (reader.focusedBookTab !== tab) return
       if (!tab.locationToReturn) return
-      if (isEditableTarget(e.target) || hasKeyboardCapturingLayer(e.target)) {
+      if (isEditableKeyboardTarget(e.target) || hasKeyboardCapturingLayer(e.target)) {
         return
       }
 

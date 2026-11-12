@@ -11,10 +11,11 @@ import React, {
 } from 'react'
 import { createPortal } from 'react-dom'
 
+import { notifyExportedFile } from '@/exportNotification'
+
 import { formatErrorMessage } from '../../errorMessage'
 import { useTranslation } from '../../hooks/useTranslation'
 import { downloadReaderImage } from '../../readerImageDownload'
-import { db } from '../../storage'
 import { useNotify } from '../ui/notificationContext'
 
 const IMAGE_PREVIEW_ZOOM_STEPS = [0.5, 0.75, 1, 1.25, 1.5, 2, 3, 4, 5]
@@ -199,20 +200,7 @@ const ReaderImagePreviewContent: React.FC<ReaderImagePreviewContentProps> = ({ b
 
     setDownloading(true)
     void downloadReaderImage(bookId, src)
-      .then((outputPath) => {
-        if (!outputPath) return
-        notify({
-          action: {
-            label: t('home.export_reveal'),
-            onClick: () => {
-              void db.files.reveal(outputPath).catch(console.error)
-            },
-          },
-          description: outputPath,
-          title: t('image_preview.download_complete'),
-          type: 'success',
-        })
-      })
+      .then((path) => notifyExportedFile(path, notify, t, 'image_preview.download_complete'))
       .catch((error) => {
         console.error(error)
         notify({

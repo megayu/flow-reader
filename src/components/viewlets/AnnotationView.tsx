@@ -18,11 +18,11 @@ import {
   isDefaultAnnotationFilter,
 } from '@/annotationFilter'
 import { formatErrorMessage } from '@/errorMessage'
-import { useList } from '@/hooks/useList'
+import { notifyExportedFile } from '@/exportNotification'
+import { useListSize } from '@/hooks/useList'
 import { useNotifyError } from '@/hooks/useNotifyError'
 import { useTranslation } from '@/hooks/useTranslation'
 import { getBookTabFrameWindows, reader, useReaderSnapshot } from '@/models/reader'
-import { db } from '@/storage'
 import { copy } from '@/utils'
 
 import { AppTooltip } from '../AppTooltip'
@@ -56,7 +56,7 @@ const DefinitionPane: React.FC = () => {
   const { focusedBookTab } = useReaderSnapshot()
   const t = useTranslation()
   const definitions = focusedBookTab?.overlayState.definitions ?? []
-  const { outerRef, items, scrollbar, totalSize } = useList(definitions)
+  const { outerRef, items, scrollbar, totalSize } = useListSize(definitions.length)
 
   return (
     <Pane
@@ -155,7 +155,7 @@ const AnnotationPane: React.FC = () => {
       }),
     [collapsedSections, sections],
   )
-  const { outerRef, items, scrollbar, scrollToItem, totalSize } = useList(rows)
+  const { outerRef, items, scrollbar, scrollToItem, totalSize } = useListSize(rows.length)
 
   useLayoutEffect(() => {
     const sectionId = pendingSectionRef.current
@@ -350,20 +350,7 @@ function AnnotationExportPanel({ annotations, onOpenChange, open }: AnnotationEx
     if (!tab || !contents) return
     onOpenChange(false)
     void saveAnnotationExport(tab.book, format, contents)
-      .then((outputPath) => {
-        if (!outputPath) return
-        notify({
-          action: {
-            label: t('home.export_reveal'),
-            onClick: () => {
-              void db.files.reveal(outputPath).catch(console.error)
-            },
-          },
-          description: outputPath,
-          title: t('home.export_complete'),
-          type: 'success',
-        })
-      })
+      .then((path) => notifyExportedFile(path, notify, t))
       .catch(notifyExportError)
   }
 

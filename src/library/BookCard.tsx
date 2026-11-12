@@ -17,6 +17,8 @@ import {
 import type React from 'react'
 import { memo, useCallback, useEffect, useRef, useState } from 'react'
 
+import { notifyExportedFile } from '@/exportNotification'
+
 import { cleanBookText, getBookDisplayTitle, getBookTooltip } from '../book'
 import { AppTooltip } from '../components/AppTooltip'
 import { readerPageTooltipContentStyle } from '../components/appTooltipStyles'
@@ -301,20 +303,7 @@ const BookCardComponent: React.FC<BookCardProps> = ({
 
     setExportingFormat(format)
     void exportBookWithDialog(book, format)
-      .then((outputPath) => {
-        if (!outputPath) return
-        notify({
-          action: {
-            label: t('home.export_reveal'),
-            onClick: () => {
-              void db.files.reveal(outputPath).catch(console.error)
-            },
-          },
-          description: outputPath,
-          title: t('home.export_complete'),
-          type: 'success',
-        })
-      })
+      .then((path) => notifyExportedFile(path, notify, t))
       .catch((error) => {
         console.error(error)
         notify({

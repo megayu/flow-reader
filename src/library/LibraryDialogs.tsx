@@ -144,35 +144,20 @@ const TagSelectionEditor: React.FC<TagSelectionEditorProps> = ({
   )
 }
 
-function getTagsInAllBooks(books: BookRecord[], tags: LibraryTagRecord[]) {
-  const tagIds = new Set<string>()
-  if (!books.length) return tagIds
-  const bookTagIds = books.map((book) => new Set(book.tagIds ?? []))
-
-  for (const tag of tags) {
-    if (bookTagIds.every((ids) => ids.has(tag.id))) {
-      tagIds.add(tag.id)
-    }
+function getTagSelection(target: BookRecord | BookRecord[], tags: LibraryTagRecord[]) {
+  if (!Array.isArray(target)) return { selected: new Set(target.tagIds ?? []), partial: new Set<string>() }
+  const counts = new Map<string, number>()
+  for (const book of target) {
+    for (const id of new Set(book.tagIds)) counts.set(id, (counts.get(id) ?? 0) + 1)
   }
-  return tagIds
-}
-
-function getTagsInAnyBook(books: BookRecord[], tags: LibraryTagRecord[]) {
-  const tagIds = new Set<string>()
-  const bookTagIds = books.map((book) => new Set(book.tagIds ?? []))
-
-  for (const tag of tags) {
-    if (bookTagIds.some((ids) => ids.has(tag.id))) {
-      tagIds.add(tag.id)
-    }
+  const selected = new Set<string>()
+  const partial = new Set<string>()
+  for (const { id } of tags) {
+    const count = counts.get(id)
+    if (count === target.length) selected.add(id)
+    else if (count) partial.add(id)
   }
-  return tagIds
-}
-
-function getPartiallySelectedTags(books: BookRecord[], tags: LibraryTagRecord[]) {
-  const allTagIds = getTagsInAllBooks(books, tags)
-
-  return new Set([...getTagsInAnyBook(books, tags)].filter((tagId) => !allTagIds.has(tagId)))
+  return { selected, partial }
 }
 
 function sameStringSet(left: Set<string>, right: Set<string>) {
@@ -205,16 +190,12 @@ interface TagsDialogProps {
 
 export const TagsDialog: React.FC<TagsDialogProps> = ({ target, onClose, tags }) => {
   const books = Array.isArray(target) ? target : [target]
-  // Single-book editing must retain its tags even before the tag catalog loads.
-  const getCurrentTagIds = () =>
-    Array.isArray(target) ? getTagsInAllBooks(target, tags) : new Set(target.tagIds ?? [])
   const t = useTranslation()
   const notifyError = useNotifyError()
-  const [initialSelectedTagIds] = useState(() =>
-    Array.isArray(target) ? getCurrentTagIds() : new Set(uniqueStringValues(target.tagIds ?? [])),
-  )
-  const [initialPartialTagIds] = useState(() =>
-    Array.isArray(target) ? getPartiallySelectedTags(target, tags) : new Set<string>(),
+  const [{ selected: initialSelectedTagIds, partial: initialPartialTagIds }] = useState(() =>
+    Array.isArray(target)
+      ? getTagSelection(target, tags)
+      : { selected: new Set(uniqueStringValues(target.tagIds ?? [])), partial: new Set<string>() },
   )
   const [selectedTagIds, setSelectedTagIds] = useState(() => new Set(initialSelectedTagIds))
   const [partialTagIds, setPartialTagIds] = useState(() => new Set(initialPartialTagIds))
@@ -263,10 +244,10 @@ export const TagsDialog: React.FC<TagsDialogProps> = ({ target, onClose, tags })
     if (!books.length || !canSave) return
 
     const persistedSelectedTagIds = new Set(await resolveSelectedTagIds(selectedTagIds, temporaryTags))
-    const initialTagIds = getCurrentTagIds()
-    const initialAnyTagIds = Array.isArray(target) ? getTagsInAnyBook(target, tags) : initialTagIds
+    const { selected: initialTagIds, partial } = getTagSelection(target, tags)
+    const initialAnyTagIds = [...initialTagIds, ...partial]
     const addTagIds = [...persistedSelectedTagIds].filter((tagId) => !initialTagIds.has(tagId))
-    const removeTagIds = [...initialAnyTagIds].filter(
+    const removeTagIds = initialAnyTagIds.filter(
       (tagId) => !persistedSelectedTagIds.has(tagId) && !partialTagIds.has(tagId),
     )
 

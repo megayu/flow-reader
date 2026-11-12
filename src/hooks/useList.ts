@@ -11,10 +11,6 @@ interface ScrollToItemOptions {
   paddingTop?: number
 }
 
-export function useList(array: Readonly<any[]> = []) {
-  return useListSize(array.length)
-}
-
 export function useListSize(count = 0) {
   const { outerRef, updateViewport, viewport } = useScrollViewport()
   const totalSize = count * LIST_ITEM_SIZE

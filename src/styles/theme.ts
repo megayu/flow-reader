@@ -53,13 +53,6 @@ export interface BackgroundPreset {
   mode: SchemeName
 }
 
-export interface BackgroundPalette {
-  content: string
-  sidebar: string
-  activity: string
-  active: string
-}
-
 type FlowThemeTokenName =
   | '--flow-bg-app'
   | '--flow-bg-activity'
@@ -487,24 +480,6 @@ function createSurfaceItemTokens(surface: string, raisedColor: string, highContr
   }
 }
 
-export function createBackgroundPalette(color: string): BackgroundPalette {
-  const content = normalizePaletteColor(color) ?? '#FFFFFF'
-
-  return {
-    content,
-    sidebar: darkenHexColor(content, 0.06),
-    activity: darkenHexColor(content, 0.12),
-    active: darkenHexColor(content, 0.18),
-  }
-}
-
-function darkenHexColor(color: string, amount: number) {
-  const rgb = hexToRgb(color)
-  if (!rgb) return color
-
-  return rgbToHex(rgb.map((channel) => Math.round(channel * (1 - amount))) as RgbColor)
-}
-
 type RgbColor = [number, number, number]
 
 function isBackgroundPresetId(value: ThemeConfiguration['backgroundPreset'] | undefined): value is BackgroundPresetId {
@@ -617,8 +592,10 @@ function ensureContrast(color: string, background: string, target: number) {
 
 function relativeLuminance(color: string) {
   const rgb = hexToRgb(color)
-  if (!rgb) return 0
+  return rgb ? rgbLuminance(rgb) : 0
+}
 
+function rgbLuminance(rgb: RgbColor) {
   const [r, g, b] = rgb.map((channel) => {
     const normalized = channel / 255
     return normalized <= 0.03928 ? normalized / 12.92 : ((normalized + 0.055) / 1.055) ** 2.4
@@ -639,13 +616,5 @@ function clamp(value: number, min: number, max: number) {
 
 export function isDarkPaletteColor(color: string | undefined) {
   const rgb = color ? hexToRgb(color) : undefined
-  if (!rgb) return false
-
-  const [r, g, b] = rgb.map((channel) => {
-    const normalized = channel / 255
-    return normalized <= 0.03928 ? normalized / 12.92 : ((normalized + 0.055) / 1.055) ** 2.4
-  }) as RgbColor
-
-  const luminance = 0.2126 * r + 0.7152 * g + 0.0722 * b
-  return luminance < 0.45
+  return rgb ? rgbLuminance(rgb) < 0.45 : false
 }

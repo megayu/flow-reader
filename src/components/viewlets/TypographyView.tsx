@@ -119,7 +119,17 @@ const TypographyPane: React.FC = () => {
       <div className="scroll min-h-0 flex-1">
         <div className="flex flex-col gap-3 pt-2 pr-0 pb-4 pl-2.5" key={focusedBookTab?.id}>
           <fieldset className="m-0 min-w-0 border-0 p-0" disabled={isScrolledDocument}>
-            <SpreadField
+            <SegmentedField<RenditionSpread>
+              options={[
+                {
+                  label: t('typography.page_view.single_page'),
+                  value: RenditionSpread.None,
+                },
+                {
+                  label: t('typography.page_view.double_page'),
+                  value: RenditionSpread.Auto,
+                },
+              ]}
               name={t('typography.page_view')}
               value={isScrolledDocument ? RenditionSpread.None : bookTypography?.spread}
               inheritedValue={inheritedSpread}
@@ -129,7 +139,11 @@ const TypographyPane: React.FC = () => {
               }}
             />
           </fieldset>
-          <TextAlignField
+          <SegmentedField<TextAlignOption>
+            options={[
+              { label: t('typography.text_align.default'), value: 'default' },
+              { label: t('typography.text_align.justify'), value: 'justify' },
+            ]}
             name={t('typography.text_align')}
             value={bookTypography?.textAlign}
             inheritedValue={globalTextAlign}
@@ -138,7 +152,13 @@ const TypographyPane: React.FC = () => {
               setTypography('textAlign', value)
             }}
           />
-          <PageAppearanceField
+          <SegmentedField<PageAppearance>
+            options={[
+              { label: t('typography.page_appearance.cards'), value: 'cards' },
+              { label: t('typography.page_appearance.book'), value: 'book' },
+              { label: t('typography.page_appearance.divider'), value: 'divider' },
+            ]}
+            unsetOnSelected
             name={t('typography.page_appearance')}
             value={bookTypography?.pageAppearance}
             onChange={(value) => {
@@ -261,14 +281,6 @@ function createFontOptions(fonts: SystemFont[]) {
   )
 }
 
-interface TextAlignFieldProps {
-  name: string
-  value?: TextAlignOption
-  inheritedValue?: TextAlignOption
-  unsetOnSelected?: boolean
-  onChange: (value?: TextAlignOption) => void
-}
-
 interface SegmentedFieldOption<T extends string> {
   label: string
   value: T
@@ -321,80 +333,6 @@ const FieldLabel: React.FC<{ name: string; tooltip?: string }> = ({ name, toolti
     <div title={tooltip} className="text-muted-foreground mb-1 cursor-default text-base font-medium">
       {name}
     </div>
-  )
-}
-
-interface SpreadFieldProps {
-  name: string
-  value?: RenditionSpread
-  inheritedValue?: RenditionSpread
-  unsetOnSelected?: boolean
-  onChange: (value?: RenditionSpread) => void
-}
-
-const SpreadField: React.FC<SpreadFieldProps> = ({ name, value, inheritedValue, unsetOnSelected, onChange }) => {
-  const t = useTranslation()
-
-  return (
-    <SegmentedField
-      name={name}
-      value={value}
-      inheritedValue={inheritedValue}
-      unsetOnSelected={unsetOnSelected}
-      options={[
-        {
-          label: t('typography.page_view.single_page'),
-          value: RenditionSpread.None,
-        },
-        {
-          label: t('typography.page_view.double_page'),
-          value: RenditionSpread.Auto,
-        },
-      ]}
-      onChange={onChange}
-    />
-  )
-}
-
-const TextAlignField: React.FC<TextAlignFieldProps> = ({ name, value, inheritedValue, unsetOnSelected, onChange }) => {
-  const t = useTranslation()
-
-  return (
-    <SegmentedField
-      name={name}
-      value={value}
-      inheritedValue={inheritedValue}
-      unsetOnSelected={unsetOnSelected}
-      options={[
-        { label: t('typography.text_align.default'), value: 'default' },
-        { label: t('typography.text_align.justify'), value: 'justify' },
-      ]}
-      onChange={onChange}
-    />
-  )
-}
-
-interface PageAppearanceFieldProps {
-  name: string
-  value?: PageAppearance
-  onChange: (value?: PageAppearance) => void
-}
-
-const PageAppearanceField: React.FC<PageAppearanceFieldProps> = ({ name, value, onChange }) => {
-  const t = useTranslation()
-
-  return (
-    <SegmentedField
-      name={name}
-      value={value}
-      unsetOnSelected
-      options={[
-        { label: t('typography.page_appearance.cards'), value: 'cards' },
-        { label: t('typography.page_appearance.book'), value: 'book' },
-        { label: t('typography.page_appearance.divider'), value: 'divider' },
-      ]}
-      onChange={onChange}
-    />
   )
 }
 

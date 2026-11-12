@@ -1,5 +1,5 @@
 import { isDevtoolsShortcutEnabled, toggleDevtools } from '../devtools'
-import { hasKeyboardCaptureLayer, isEditableKeyboardTarget, isGlobalKeyboardShortcutBlocked } from '../keyboard'
+import { hasKeyboardCaptureLayer, isGlobalKeyboardShortcutBlocked } from '../keyboard'
 import { type BookTab, reader } from '../models/reader'
 import type { SetterOrUpdater, TypographyConfiguration, ViewMode } from '../state'
 import { getBodyTypographyBaseline, notePopoverClass } from '../styles'
@@ -467,10 +467,6 @@ function shouldIgnoreReaderShortcut(event: KeyboardEvent) {
 
 export function isReaderShortcutTargetBlocked(event: KeyboardEvent, ignoredLayer?: Element | null) {
   return isGlobalKeyboardShortcutBlocked(event) || hasKeyboardCapturingLayer(event.target, ignoredLayer)
-}
-
-export function isEditableTarget(target: EventTarget | null) {
-  return isEditableKeyboardTarget(target)
 }
 
 export function hasKeyboardCapturingLayer(target: EventTarget | null, ignoredLayer?: Element | null) {

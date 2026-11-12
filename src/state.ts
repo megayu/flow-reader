@@ -13,12 +13,8 @@ import {
   type ViewMode,
 } from './settings/configuration'
 import { normalizeSettings } from './settings/normalize'
-import {
-  getNativeSettingsBootstrap,
-  resetNativeTextImportRule,
-  type TextImportRuleKind,
-  updateNativeSettings,
-} from './settings/sync'
+import { resetNativeTextImportRule, type TextImportRuleKind, updateNativeSettings } from './settings/sync'
+import { getSettingsFromStorage } from './storage/client'
 import type { ReadingStatus } from './storage/types'
 
 export * from './settings/configuration'
@@ -331,7 +327,7 @@ export function useSetZenTypographyOverrides() {
 let settingsLoadPromise: Promise<void> | undefined
 
 function loadSettings() {
-  settingsLoadPromise ??= getNativeSettingsBootstrap()
+  settingsLoadPromise ??= getSettingsFromStorage()
     .then((bootstrap) => {
       useAppStore.setState({
         settings: normalizeSettings(initializeSettingsLocale(bootstrap.settings)),

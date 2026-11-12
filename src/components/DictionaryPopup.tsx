@@ -80,7 +80,6 @@ export function DictionaryPopup({
   }, [localDictionaries, merriamWebster, settings.dictionary?.sourceOrder, zdic])
   const [rootSources, setRootSources] = useState<DictionarySourceState[]>([])
   const [retrySources, setRetrySources] = useState<Record<string, DictionarySourceState>>({})
-  const [retryingSourceIds, setRetryingSourceIds] = useState<Record<string, boolean>>({})
   const [detailHistory, setDetailHistory] = useState<readonly DictionaryDetailLocation[]>([])
   const [detailSourcesByKey, setDetailSourcesByKey] = useState<Record<string, DictionarySourceState[]>>({})
   const [currentSourceId, setCurrentSourceId] = useState<string>()
@@ -131,7 +130,6 @@ export function DictionaryPopup({
     retryCoordinators.forEach((coordinator) => coordinator.cancelActive())
     retryCoordinators.clear()
     setRetrySources({})
-    setRetryingSourceIds({})
     const session = rootCoordinator.lookup(query, providers, setRootSources, metadataLanguage)
     return () => {
       session.cancel()
@@ -190,10 +188,6 @@ export function DictionaryPopup({
 
       const coordinator = retryCoordinatorsRef.current.get(provider.id) ?? new DictionaryCoordinator()
       retryCoordinatorsRef.current.set(provider.id, coordinator)
-      setRetryingSourceIds((current) => ({
-        ...current,
-        [provider.id]: true,
-      }))
       coordinator.lookup(
         query,
         [provider],
@@ -209,10 +203,6 @@ export function DictionaryPopup({
             [provider.id]: source,
           }))
           if (terminal) {
-            setRetryingSourceIds((current) => ({
-              ...current,
-              [provider.id]: false,
-            }))
           }
         },
         metadataLanguage,
@@ -434,7 +424,7 @@ export function DictionaryPopup({
                   <DictionarySourceSection
                     key={source.providerId}
                     activeRichContent={!currentDetail}
-                    isRetrying={Boolean(retryingSourceIds[source.providerId])}
+                    isRetrying={retrySources[source.providerId]?.status === 'loading'}
                     onContentResize={restoreRootScroll}
                     onEntryNavigate={navigateToEntry}
                     onRetry={provider?.scope === 'online' ? () => retrySource(provider) : undefined}

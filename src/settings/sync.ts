@@ -1,9 +1,4 @@
-import {
-  flushSettingsInStorage,
-  getSettingsFromStorage,
-  resetTextImportRuleInStorage,
-  updateSettingsInStorage,
-} from '@/storage/client'
+import { flushSettingsInStorage, resetTextImportRuleInStorage, updateSettingsInStorage } from '@/storage/client'
 
 import type { Settings, TextImportRulesConfiguration } from './configuration'
 
@@ -29,10 +24,6 @@ function enqueue<T>(operation: () => Promise<T>) {
 export function updateNativeSettings(settings: Settings, flush: boolean) {
   if (!flush) revision += 1
   return enqueue(() => updateSettingsInStorage(settings, flush))
-}
-
-export function getNativeSettingsBootstrap() {
-  return getSettingsFromStorage()
 }
 
 export function resetNativeTextImportRule(kind: TextImportRuleKind) {

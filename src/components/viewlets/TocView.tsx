@@ -5,7 +5,7 @@ import { useSnapshot } from 'valtio'
 
 import { compareBookDisplayTitle, getBookDisplayTitle, getBookTooltip } from '@/book'
 import { useLibrary } from '@/hooks/useLibrary'
-import { LIST_ITEM_SIZE, useList } from '@/hooks/useList'
+import { LIST_ITEM_SIZE, useListSize } from '@/hooks/useList'
 import { useTranslation } from '@/hooks/useTranslation'
 import { type BookTab, completeTabOpen, type INavItem, reader, useReaderSnapshot } from '@/models/reader'
 import { sameHref } from '@/noteLinks'
@@ -47,7 +47,7 @@ const LibraryPane: React.FC<ActivePaneProps> = ({ active }) => {
   const { focusedBookTab, tabs } = useReaderSnapshot()
   const setViewMode = useSetViewMode()
   const sortedBooks = useMemo(() => books?.slice().sort(compareBookDisplayTitle) ?? [], [books])
-  const { outerRef, items, scrollbar, scrollToItem, totalSize } = useList(sortedBooks)
+  const { outerRef, items, scrollbar, scrollToItem, totalSize } = useListSize(sortedBooks.length)
   const openedBookIds = useMemo(() => new Set(tabs.map((tab) => tab.book.id)), [tabs])
   const currentBookId = focusedBookTab?.book.id
   const currentIndex = useMemo(
@@ -190,7 +190,7 @@ const BookTocPane: React.FC<BookTocPaneProps> = ({ active, tab }) => {
     void tocVersion
     return flattenToc(toc)
   }, [toc, tocVersion])
-  const { outerRef, items, scrollbar, scrollToItem, totalSize } = useList(rows)
+  const { outerRef, items, scrollbar, scrollToItem, totalSize } = useListSize(rows.length)
   const stickyRows = getTocStickyRows(rows, scrollbar.scrollTop, scrollbar.viewportHeight, LIST_ITEM_SIZE)
   const stickyIndices = new Set(stickyRows.map(({ index }) => index))
   const lastSticky = stickyRows.at(-1)
