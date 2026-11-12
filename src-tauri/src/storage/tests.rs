@@ -10,20 +10,19 @@ use super::text_import::{text_import_filename_metadata, text_section_xhtml_for_v
 use super::{
     AppStorage, BOOK_FILE, BOOK_STATE_VERSION, BOOKS_DIR, BookContentMode, BookExportFormat, BookModeSwitchConflict,
     BookModeSwitchResolution, BookReaderSourceMode, BookRecord, BookScope, BookSourceFormat, BookSourceStatus,
-    BookState, BookTextReplaceTarget, DirtyState, ExistingBookImport, FolderImportTagAssignment,
-    IMAGE_INDEX_CACHE_VERSION, ImageIndexCache, ImageIndexEntry, ImageIndexSection, LIBRARY_VERSION, Library,
-    LibraryPins, LibraryTagRecord, ReadingStatus, SEARCH_TEXT_CACHE_VERSION, SOURCE_TEXT_FILE, STATE_FILE,
-    SearchTextCache, SearchTextSection, SourceStorage, SourceTextUpdate, StorageInner, StorageState, StoredBook,
-    TextImportRulesInput, TextImportSelection, UNPACKED_DIR, apply_folder_import_tags_impl,
-    check_book_content_mode_switch_impl, check_book_source_statuses_impl, cleanup_external_book_heavy_files,
-    decode_text_bytes, empty_object, ensure_book_package_path_with_unpacker, existing_book_import, export_book_impl,
-    get_book_reader_source_impl, hash_file, id_from_hash, library_path, load_or_build_search_text_cache,
-    mark_book_content_updated_fields, mark_library_book_content_updated, materialize_epub_package,
-    normalize_epub_creator, normalize_non_square_pixel_png, normalize_publication_date,
-    normalize_unpacked_epub_structure, open_external_epub_path_impl, parent_zip_path, parse_text_import_document,
-    path_to_client_string, read_image_index_cache, read_json_or_default, read_json_value_or_default,
-    read_search_text_sections_from_unpacked, relative_zip_path, rename_books_for_deletion, replace_book_text_impl,
-    replace_xhtml_text, replace_xhtml_text_node, search_text_cache_from_bytes, search_text_cache_to_bytes,
+    BookState, BookTextReplaceTarget, ExistingBookImport, FolderImportTagAssignment, IMAGE_INDEX_CACHE_VERSION,
+    ImageIndexCache, ImageIndexEntry, ImageIndexSection, LIBRARY_VERSION, Library, LibraryPins, LibraryTagRecord,
+    ReadingStatus, SEARCH_TEXT_CACHE_VERSION, SOURCE_TEXT_FILE, STATE_FILE, SearchTextCache, SearchTextSection,
+    SourceStorage, SourceTextUpdate, StorageState, StoredBook, TextImportRulesInput, TextImportSelection, UNPACKED_DIR,
+    apply_folder_import_tags_impl, check_book_content_mode_switch_impl, check_book_source_statuses_impl,
+    cleanup_external_book_heavy_files, decode_compressed_json, decode_text_bytes, empty_object, encode_compressed_json,
+    ensure_book_package_path_with_unpacker, existing_book_import, export_book_impl, get_book_reader_source_impl,
+    hash_file, id_from_hash, library_path, load_or_build_search_text_cache, mark_book_content_updated_fields,
+    mark_library_book_content_updated, materialize_epub_package, normalize_epub_creator,
+    normalize_non_square_pixel_png, normalize_publication_date, normalize_unpacked_epub_structure,
+    open_external_epub_path_impl, parent_zip_path, parse_text_import_document, path_to_client_string,
+    read_image_index_cache, read_json_or_default, read_json_value_or_default, read_search_text_sections_from_unpacked,
+    relative_zip_path, rename_books_for_deletion, replace_book_text_impl, replace_xhtml_text, replace_xhtml_text_node,
     search_text_in_cache, settings_path, switch_book_content_mode_impl, text_content_opf, text_nav_xhtml,
     text_section_xhtml, visible_search_text_from_xhtml, write_cover, write_epub_from_original_and_unpacked,
     write_epub_from_unpacked_dir, write_image_index_cache_if_current, write_source_text_update,
@@ -36,7 +35,7 @@ use std::{
     io::{Cursor, Read, Write},
     path::Path,
     sync::{
-        Arc, Mutex,
+        Arc,
         atomic::{AtomicUsize, Ordering},
     },
     thread,
@@ -385,35 +384,19 @@ fn test_storage_with_books(root: &Path, books: Vec<StoredBook>) -> AppStorage {
             )
         })
         .collect::<Vec<_>>();
-    let storage = AppStorage {
-        inner: Arc::new(StorageInner {
-            root: root.to_path_buf(),
-            state: Mutex::new(StorageState::new(
-                Library {
-                    version: LIBRARY_VERSION,
-                    books,
-                    tags: Vec::new(),
-                    pins: LibraryPins::default(),
-                    recent_book_ids: Vec::new(),
-                },
-                json!({"importSourceStorage": "managed"}),
-            )),
-            dirty: Mutex::new(DirtyState::default()),
-            flush_lock: Mutex::new(()),
-            import_lock: Mutex::new(()),
-            search_text_caches: Mutex::new(HashMap::new()),
-            image_index_caches: Mutex::new(HashMap::new()),
-            derived_cache_states: Mutex::new(HashMap::new()),
-            derived_cache_flush_lock: Mutex::new(()),
-            archive_resources: Mutex::new(HashMap::new()),
-            text_import_prepare_runs: std::sync::atomic::AtomicUsize::new(0),
-            text_import_prepare_active: std::sync::atomic::AtomicUsize::new(0),
-            text_import_prepare_max_active: std::sync::atomic::AtomicUsize::new(0),
-            text_import_prepare_delay_ms: std::sync::atomic::AtomicU64::new(0),
-            text_import_prepared_handoff_active: std::sync::atomic::AtomicUsize::new(0),
-            text_import_prepared_handoff_max_active: std::sync::atomic::AtomicUsize::new(0),
-        }),
-    };
+    let storage = AppStorage::from_state(
+        root.to_path_buf(),
+        StorageState::new(
+            Library {
+                version: LIBRARY_VERSION,
+                books,
+                tags: Vec::new(),
+                pins: LibraryPins::default(),
+                recent_book_ids: Vec::new(),
+            },
+            json!({"importSourceStorage": "managed"}),
+        ),
+    );
     for (id, state) in initial_states {
         storage.write_book_state(&id, &state).unwrap();
     }
@@ -421,29 +404,13 @@ fn test_storage_with_books(root: &Path, books: Vec<StoredBook>) -> AppStorage {
 }
 
 fn test_storage_from_disk(root: &Path) -> AppStorage {
-    AppStorage {
-        inner: Arc::new(StorageInner {
-            root: root.to_path_buf(),
-            state: Mutex::new(StorageState::new(
-                read_json_or_default::<Library>(&library_path(root).unwrap()).unwrap(),
-                json!({"importSourceStorage": "managed"}),
-            )),
-            dirty: Mutex::new(DirtyState::default()),
-            flush_lock: Mutex::new(()),
-            import_lock: Mutex::new(()),
-            search_text_caches: Mutex::new(HashMap::new()),
-            image_index_caches: Mutex::new(HashMap::new()),
-            derived_cache_states: Mutex::new(HashMap::new()),
-            derived_cache_flush_lock: Mutex::new(()),
-            archive_resources: Mutex::new(HashMap::new()),
-            text_import_prepare_runs: std::sync::atomic::AtomicUsize::new(0),
-            text_import_prepare_active: std::sync::atomic::AtomicUsize::new(0),
-            text_import_prepare_max_active: std::sync::atomic::AtomicUsize::new(0),
-            text_import_prepare_delay_ms: std::sync::atomic::AtomicU64::new(0),
-            text_import_prepared_handoff_active: std::sync::atomic::AtomicUsize::new(0),
-            text_import_prepared_handoff_max_active: std::sync::atomic::AtomicUsize::new(0),
-        }),
-    }
+    AppStorage::from_state(
+        root.to_path_buf(),
+        StorageState::new(
+            read_json_or_default::<Library>(&library_path(root).unwrap()).unwrap(),
+            json!({"importSourceStorage": "managed"}),
+        ),
+    )
 }
 
 fn external_promotion_state() -> BookState {
@@ -1420,7 +1387,7 @@ fn unchanged_unpacked_package_is_not_reported_as_normalized() {
     fs::remove_dir_all(root).unwrap();
 }
 
-fn write_minimal_epub_file(path: &Path, title: &str, body: &str) {
+pub(super) fn write_minimal_epub_file(path: &Path, title: &str, body: &str) {
     if let Some(parent) = path.parent() {
         fs::create_dir_all(parent).unwrap();
     }
@@ -3348,8 +3315,8 @@ fn persists_search_text_cache_as_zstd_payload() {
         }],
     };
 
-    let bytes = search_text_cache_to_bytes(&cache).expect("cache should encode");
-    let restored = search_text_cache_from_bytes(&bytes).expect("cache should decode");
+    let bytes = encode_compressed_json(&cache).expect("cache should encode");
+    let restored: SearchTextCache = decode_compressed_json(&bytes).expect("cache should decode");
 
     assert_eq!(restored, cache);
     let json = zstd::stream::decode_all(bytes.as_slice()).unwrap();

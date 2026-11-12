@@ -2,7 +2,7 @@ use std::collections::{HashMap, HashSet};
 
 use serde::{Deserialize, Serialize};
 
-use super::{decode_compressed_json, encode_compressed_json, join_zip_path, normalize_zip_path, parent_zip_path};
+use super::{join_zip_path, normalize_zip_path, parent_zip_path};
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -29,14 +29,6 @@ pub struct ImageIndexEntry {
     pub hidden_by_default: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub reason: Option<String>,
-}
-
-pub(super) fn image_index_cache_to_bytes(cache: &ImageIndexCache) -> Result<Vec<u8>, String> {
-    encode_compressed_json(cache)
-}
-
-pub(super) fn image_index_cache_from_bytes(bytes: &[u8]) -> Result<ImageIndexCache, String> {
-    decode_compressed_json(bytes)
 }
 
 pub(super) fn image_index_section_from_document(

@@ -150,14 +150,6 @@ pub struct SearchTextResult {
     pub(super) expanded: bool,
 }
 
-pub(super) fn search_text_cache_to_bytes(cache: &SearchTextCache) -> Result<Vec<u8>, String> {
-    encode_compressed_json(cache)
-}
-
-pub(super) fn search_text_cache_from_bytes(bytes: &[u8]) -> Result<SearchTextCache, String> {
-    decode_compressed_json(bytes)
-}
-
 fn search_text_cache_matches_book(cache: &SearchTextCache, book: &StoredBook) -> bool {
     cache.version == SEARCH_TEXT_CACHE_VERSION
         && cache.source_revision == book.source_revision
@@ -175,7 +167,7 @@ fn write_search_text_cache_if_current(storage: &AppStorage, id: &str, cache: &Se
         fs::create_dir_all(parent).map_err(|error| error.to_string())?;
     }
 
-    let bytes = search_text_cache_to_bytes(cache)?;
+    let bytes = encode_compressed_json(cache)?;
     let tmp = path.with_extension("tmp");
     fs::write(&tmp, bytes).map_err(|error| error.to_string())?;
 
@@ -259,7 +251,7 @@ fn read_search_text_cache(storage: &AppStorage, book: &StoredBook) -> Result<Sea
     }
     let path = storage.search_text_cache_path(&book.id, book.source_revision, book.revision);
     let bytes = fs::read(path).map_err(|error| error.to_string())?;
-    let cache = search_text_cache_from_bytes(&bytes)?;
+    let cache = decode_compressed_json(&bytes)?;
     if search_text_cache_matches_book(&cache, book) {
         Ok(cache)
     } else {
@@ -279,7 +271,7 @@ pub(super) fn read_image_index_cache(storage: &AppStorage, book: &StoredBook) ->
     }
     let path = storage.image_index_cache_path(&book.id, book.source_revision, book.revision);
     let bytes = fs::read(path).map_err(|error| error.to_string())?;
-    let cache = image_index_cache_from_bytes(&bytes)?;
+    let cache = decode_compressed_json(&bytes)?;
     if image_index_cache_matches_book(&cache, book) {
         Ok(cache)
     } else {
@@ -301,7 +293,7 @@ pub(super) fn write_image_index_cache_if_current(
     if let Some(parent) = path.parent() {
         fs::create_dir_all(parent).map_err(|error| error.to_string())?;
     }
-    let bytes = image_index_cache_to_bytes(cache)?;
+    let bytes = encode_compressed_json(cache)?;
     let tmp = path.with_extension("tmp");
     fs::write(&tmp, bytes).map_err(|error| error.to_string())?;
     let current_book = storage.stored_book(id)?;
@@ -502,75 +494,6 @@ fn load_or_build_derived_cache(
         return load_or_build_derived_cache(storage, tasks, book, true);
     }
     Ok(built)
-}
-
-#[cfg(test)]
-fn load_or_build_search_text_cache_with_builder(
-    storage: &AppStorage,
-    tasks: &TaskService,
-    book: &StoredBook,
-    builder: impl FnOnce(&AppStorage, &TaskService, &StoredBook) -> Result<SearchTextCache, String>,
-) -> Result<Arc<SearchTextCache>, String> {
-    let started = Instant::now();
-    let record_hit = |kind: &str, sections: usize| {
-        let mut fields = vec![
-            ("book", book.id.clone()),
-            ("cache", kind.to_string()),
-            ("sections", sections.to_string()),
-            (
-                "search_memory_caches",
-                storage.search_text_memory_cache_len().to_string(),
-            ),
-        ];
-        fields.extend(tasks.diagnostic_fields());
-        diagnostics::record_timing("search-index", started.elapsed(), &fields);
-    };
-    if let Some(cache) = load_search_text_memory_cache(storage, book)? {
-        record_hit("memory", cache.sections.len());
-        return Ok(cache);
-    }
-
-    if let Ok(cache) = read_search_text_cache(storage, book) {
-        let cache = Arc::new(cache);
-        store_search_text_memory_cache(
-            storage,
-            book.id.clone(),
-            cache.clone(),
-            false,
-            book.scope == BookScope::Library,
-        )?;
-        record_hit("disk", cache.sections.len());
-        return Ok(cache);
-    }
-
-    let key = derived_cache_task_key(book);
-    let task_storage = storage.clone();
-    let task_book = book.clone();
-    let task_runner = tasks.clone();
-    let cache: Arc<SearchTextCache> = tasks.get_or_run(key, TaskPriority::Foreground, move || {
-        task_runner.run_book_exclusive(&task_book.id, TaskPriority::Foreground, || {
-            task_runner.run_cpu(TaskPriority::Foreground, || {
-                let cache = builder(&task_storage, &task_runner, &task_book)?;
-                if !write_search_text_cache_if_current(&task_storage, &task_book.id, &cache)? {
-                    return Err("Search text cache is stale".to_string());
-                }
-                Ok(Arc::new(cache))
-            })
-        })
-    })?;
-
-    if !search_text_cache_matches_book(&cache, book) {
-        return Err("Search text cache is stale".to_string());
-    }
-    store_search_text_memory_cache(
-        storage,
-        book.id.clone(),
-        cache.clone(),
-        false,
-        book.scope == BookScope::Library,
-    )?;
-    record_hit("built", cache.sections.len());
-    Ok(cache)
 }
 
 fn derived_cache_task_key(book: &StoredBook) -> TaskKey {
@@ -2141,12 +2064,8 @@ mod tests {
     use super::*;
     use serde_json::json;
     use std::{
-        collections::HashMap,
         path::Path,
-        sync::{
-            Arc, Mutex,
-            atomic::{AtomicUsize, Ordering},
-        },
+        sync::Arc,
         thread,
         time::{Duration, SystemTime, UNIX_EPOCH},
     };
@@ -2248,35 +2167,19 @@ mod tests {
     }
 
     fn test_storage(root: &Path, books: Vec<StoredBook>) -> AppStorage {
-        AppStorage {
-            inner: Arc::new(StorageInner {
-                root: root.to_path_buf(),
-                state: Mutex::new(StorageState::new(
-                    Library {
-                        version: 1,
-                        books,
-                        tags: Vec::new(),
-                        pins: LibraryPins::default(),
-                        recent_book_ids: Vec::new(),
-                    },
-                    json!({}),
-                )),
-                dirty: Mutex::new(DirtyState::default()),
-                flush_lock: Mutex::new(()),
-                import_lock: Mutex::new(()),
-                search_text_caches: Mutex::new(HashMap::new()),
-                image_index_caches: Mutex::new(HashMap::new()),
-                derived_cache_states: Mutex::new(HashMap::new()),
-                derived_cache_flush_lock: Mutex::new(()),
-                archive_resources: Mutex::new(HashMap::new()),
-                text_import_prepare_runs: std::sync::atomic::AtomicUsize::new(0),
-                text_import_prepare_active: std::sync::atomic::AtomicUsize::new(0),
-                text_import_prepare_max_active: std::sync::atomic::AtomicUsize::new(0),
-                text_import_prepare_delay_ms: std::sync::atomic::AtomicU64::new(0),
-                text_import_prepared_handoff_active: std::sync::atomic::AtomicUsize::new(0),
-                text_import_prepared_handoff_max_active: std::sync::atomic::AtomicUsize::new(0),
-            }),
-        }
+        AppStorage::from_state(
+            root.to_path_buf(),
+            StorageState::new(
+                Library {
+                    version: 1,
+                    books,
+                    tags: Vec::new(),
+                    pins: LibraryPins::default(),
+                    recent_book_ids: Vec::new(),
+                },
+                json!({}),
+            ),
+        )
     }
 
     fn test_cache(book: &StoredBook, text: &str) -> SearchTextCache {
@@ -2366,37 +2269,26 @@ mod tests {
         let root = temp_root("search-idempotent-test");
         let storage = Arc::new(test_storage(&root, vec![test_book("book", 1)]));
         let tasks = Arc::new(TaskService::default());
-        let runs = Arc::new(AtomicUsize::new(0));
-        let book = storage.stored_book("book").unwrap();
-
-        let first = {
+        let mut book = storage.stored_book("book").unwrap();
+        book.editable = false;
+        crate::storage::tests::write_minimal_epub_file(
+            &storage.book_dir("book").join(BOOK_FILE),
+            "Concurrent",
+            "shared search text",
+        );
+        let start = Arc::new(std::sync::Barrier::new(2));
+        let worker = || {
             let storage = Arc::clone(&storage);
             let tasks = Arc::clone(&tasks);
-            let runs = Arc::clone(&runs);
             let book = book.clone();
+            let start = Arc::clone(&start);
             thread::spawn(move || {
-                load_or_build_search_text_cache_with_builder(&storage, &tasks, &book, |_, _, book| {
-                    runs.fetch_add(1, Ordering::SeqCst);
-                    thread::sleep(Duration::from_millis(100));
-                    Ok(test_cache(book, "first build"))
-                })
+                start.wait();
+                load_or_build_search_text_cache(&storage, &tasks, &book)
             })
         };
-
-        thread::sleep(Duration::from_millis(20));
-
-        let second = {
-            let storage = Arc::clone(&storage);
-            let tasks = Arc::clone(&tasks);
-            let runs = Arc::clone(&runs);
-            thread::spawn(move || {
-                load_or_build_search_text_cache_with_builder(&storage, &tasks, &book, |_, _, book| {
-                    runs.fetch_add(1, Ordering::SeqCst);
-                    Ok(test_cache(book, "second build"))
-                })
-            })
-        };
-
+        let first = worker();
+        let second = worker();
         let deadline = std::time::Instant::now() + Duration::from_secs(5);
         for (name, worker) in [
             ("first search index build", &first),
@@ -2411,7 +2303,7 @@ mod tests {
         let second = second.join().unwrap().unwrap();
 
         assert_eq!(first.sections[0].text, second.sections[0].text);
-        assert_eq!(runs.load(Ordering::SeqCst), 1);
+        assert!(Arc::ptr_eq(&first, &second));
 
         let _ = fs::remove_dir_all(root);
     }

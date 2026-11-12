@@ -52,10 +52,7 @@ pub use folder_import::*;
 pub use image_index::ImageIndexCache;
 #[cfg(test)]
 use image_index::ImageIndexEntry;
-use image_index::{
-    ImageIndexSection, finalize_image_index, image_index_cache_from_bytes, image_index_cache_to_bytes,
-    image_index_section_from_document,
-};
+use image_index::{ImageIndexSection, finalize_image_index, image_index_section_from_document};
 #[cfg(test)]
 use model::ReadingStatus;
 use model::{
@@ -108,8 +105,8 @@ use search::{
 };
 #[cfg(test)]
 use search::{
-    SearchTextSection, read_image_index_cache, read_search_text_sections_from_unpacked, search_text_cache_from_bytes,
-    search_text_cache_to_bytes, visible_search_text_from_xhtml, write_image_index_cache_if_current,
+    SearchTextSection, read_image_index_cache, read_search_text_sections_from_unpacked, visible_search_text_from_xhtml,
+    write_image_index_cache_if_current,
 };
 use state::{DirtyState, StorageState};
 use text_import::{
@@ -253,6 +250,35 @@ fn epub_editable_from_settings(settings: &Value) -> bool {
 }
 
 impl AppStorage {
+    fn from_state(root: PathBuf, state: StorageState) -> Self {
+        Self {
+            inner: Arc::new(StorageInner {
+                root,
+                state: Mutex::new(state),
+                dirty: Mutex::new(DirtyState::default()),
+                flush_lock: Mutex::new(()),
+                import_lock: Mutex::new(()),
+                search_text_caches: Mutex::new(HashMap::new()),
+                image_index_caches: Mutex::new(HashMap::new()),
+                derived_cache_states: Mutex::new(HashMap::new()),
+                derived_cache_flush_lock: Mutex::new(()),
+                archive_resources: Mutex::new(HashMap::new()),
+                #[cfg(test)]
+                text_import_prepare_runs: std::sync::atomic::AtomicUsize::new(0),
+                #[cfg(test)]
+                text_import_prepare_active: std::sync::atomic::AtomicUsize::new(0),
+                #[cfg(test)]
+                text_import_prepare_max_active: std::sync::atomic::AtomicUsize::new(0),
+                #[cfg(test)]
+                text_import_prepare_delay_ms: std::sync::atomic::AtomicU64::new(0),
+                #[cfg(test)]
+                text_import_prepared_handoff_active: std::sync::atomic::AtomicUsize::new(0),
+                #[cfg(test)]
+                text_import_prepared_handoff_max_active: std::sync::atomic::AtomicUsize::new(0),
+            }),
+        }
+    }
+
     // Acquire before state or task resource locks. A batch keeps its lookup indices stable.
     fn lock_import(&self) -> Result<std::sync::MutexGuard<'_, ()>, String> {
         self.inner
@@ -299,32 +325,7 @@ impl AppStorage {
         for name in [LIBRARY_FILE, SETTINGS_FILE, WINDOW_STATE_FILE] {
             crate::atomic_file::cleanup_interrupted_json_write(&root.join(name))?;
         }
-        let storage = Self {
-            inner: Arc::new(StorageInner {
-                root,
-                state: Mutex::new(StorageState::new(library, settings)),
-                dirty: Mutex::new(DirtyState::default()),
-                flush_lock: Mutex::new(()),
-                import_lock: Mutex::new(()),
-                search_text_caches: Mutex::new(HashMap::new()),
-                image_index_caches: Mutex::new(HashMap::new()),
-                derived_cache_states: Mutex::new(HashMap::new()),
-                derived_cache_flush_lock: Mutex::new(()),
-                archive_resources: Mutex::new(HashMap::new()),
-                #[cfg(test)]
-                text_import_prepare_runs: std::sync::atomic::AtomicUsize::new(0),
-                #[cfg(test)]
-                text_import_prepare_active: std::sync::atomic::AtomicUsize::new(0),
-                #[cfg(test)]
-                text_import_prepare_max_active: std::sync::atomic::AtomicUsize::new(0),
-                #[cfg(test)]
-                text_import_prepare_delay_ms: std::sync::atomic::AtomicU64::new(0),
-                #[cfg(test)]
-                text_import_prepared_handoff_active: std::sync::atomic::AtomicUsize::new(0),
-                #[cfg(test)]
-                text_import_prepared_handoff_max_active: std::sync::atomic::AtomicUsize::new(0),
-            }),
-        };
+        let storage = Self::from_state(root, StorageState::new(library, settings));
         if initialize_settings {
             storage.mark_settings_dirty();
         }
