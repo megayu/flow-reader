@@ -141,7 +141,14 @@ function request(
           })
           return deferred.promise
         }
-        if (responseXML) {
+        if (type === 'json') {
+          try {
+            r = JSON.parse(this.response)
+          } catch (error) {
+            deferred.reject(error)
+            return
+          }
+        } else if (responseXML) {
           r = this.responseXML
         } else if (isXml(type!)) {
           // xhr.overrideMimeType("text/xml"); // for OPF parsing
@@ -151,8 +158,6 @@ function request(
           r = parse(this.response, 'application/xhtml+xml')
         } else if (type == 'html' || type == 'htm') {
           r = parse(this.response, 'text/html')
-        } else if (type == 'json') {
-          r = JSON.parse(this.response)
         } else if (type == 'blob') {
           if (supportsURL) {
             r = this.response
