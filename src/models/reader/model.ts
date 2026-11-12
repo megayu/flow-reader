@@ -596,10 +596,10 @@ export class BookTab {
     return displaySearchResult(this, result, keyword, sectionContext)
   }
   async prev() {
-    return this.navigation.prev(this)
+    return this.navigation.turnPage(this, -1)
   }
   async next() {
-    return this.navigation.next(this)
+    return this.navigation.turnPage(this, 1)
   }
   prevSection() {
     return this.navigation.navigateSection(this, -1)

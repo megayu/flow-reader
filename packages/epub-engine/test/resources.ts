@@ -1,8 +1,8 @@
+import { createEpubZip } from './support/epub-zip'
 import type Section from '../src/section'
 import type { PackagingManifestItem } from '../src/packaging'
 import { double } from './support/double'
 import { assert } from 'vitest'
-import JSZip from 'jszip'
 
 import Book from '../src/book'
 import Resources from '../src/resources'
@@ -77,22 +77,12 @@ describe('Resources', function () {
   })
 
   it('replaces decoded stylesheet links while rendering archived sections', async function () {
-    const zip = new JSZip()
+    const zip = createEpubZip()
     const sectionHref = 'Text/%2A%3Achapter%3Aone.xhtml'
     const styleHref = 'Styles/%2A%3Astyle%3Aone.css'
     const decodedSectionHref = decodeURIComponent(sectionHref)
     const decodedStyleHref = decodeURIComponent(styleHref)
 
-    zip.file('mimetype', 'application/epub+zip')
-    zip.file(
-      'META-INF/container.xml',
-      `<?xml version="1.0"?>
-      <container version="1.0" xmlns="urn:oasis:names:tc:opendocument:xmlns:container">
-        <rootfiles>
-          <rootfile full-path="OEBPS/content.opf" media-type="application/oebps-package+xml"/>
-        </rootfiles>
-      </container>`,
-    )
     zip.file(
       'OEBPS/content.opf',
       `<?xml version="1.0" encoding="UTF-8"?>

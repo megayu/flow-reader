@@ -208,43 +208,8 @@ export function extend(target: object, ...sources: (object | undefined)[]) {
  * @memberof Core
  */
 export function bounds(el: Element) {
-  var style = window.getComputedStyle(el)
-  var widthProps = [
-    'width',
-    'paddingRight',
-    'paddingLeft',
-    'marginRight',
-    'marginLeft',
-    'borderRightWidth',
-    'borderLeftWidth',
-  ]
-  var heightProps = [
-    'height',
-    'paddingTop',
-    'paddingBottom',
-    'marginTop',
-    'marginBottom',
-    'borderTopWidth',
-    'borderBottomWidth',
-  ]
-
-  var width = 0
-  var height = 0
-
-  widthProps.forEach(function (prop) {
-    width +=
-      parseFloat((style as unknown as Record<string, string>)[prop]!) || 0
-  })
-
-  heightProps.forEach(function (prop) {
-    height +=
-      parseFloat((style as unknown as Record<string, string>)[prop]!) || 0
-  })
-
-  return {
-    height: height,
-    width: width,
-  }
+  const style = window.getComputedStyle(el)
+  return sumBoxEdges(style, parseFloat(style.width) || 0, parseFloat(style.height) || 0)
 }
 
 /**
@@ -255,40 +220,40 @@ export function bounds(el: Element) {
  * @memberof Core
  */
 export function borders(el: Element) {
-  var style = window.getComputedStyle(el)
-  var widthProps = [
+  return sumBoxEdges(window.getComputedStyle(el), 0, 0)
+}
+
+function sumBoxEdges(style: CSSStyleDeclaration, width: number, height: number) {
+  const widthProps = [
     'paddingRight',
     'paddingLeft',
     'marginRight',
     'marginLeft',
     'borderRightWidth',
     'borderLeftWidth',
-  ]
-  var heightProps = [
+  ] as const
+  const heightProps = [
     'paddingTop',
     'paddingBottom',
     'marginTop',
     'marginBottom',
     'borderTopWidth',
     'borderBottomWidth',
-  ]
-
-  var width = 0
-  var height = 0
+  ] as const
 
   widthProps.forEach(function (prop) {
     width +=
-      parseFloat((style as unknown as Record<string, string>)[prop]!) || 0
+      parseFloat(style[prop]) || 0
   })
 
   heightProps.forEach(function (prop) {
     height +=
-      parseFloat((style as unknown as Record<string, string>)[prop]!) || 0
+      parseFloat(style[prop]) || 0
   })
 
   return {
-    height: height,
-    width: width,
+    height,
+    width,
   }
 }
 

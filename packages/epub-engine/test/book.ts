@@ -1,3 +1,4 @@
+import { createEpubZip } from './support/epub-zip'
 import { assert } from 'vitest'
 import JSZip from 'jszip'
 
@@ -94,20 +95,10 @@ describe('Book', function () {
     })
 
     it('decodes package and NCX hrefs before resolving sections', async function () {
-      const zip = new JSZip()
+      const zip = createEpubZip()
       const sectionHref = 'Text%2Fchapter%20one.xhtml'
       const decodedSectionHref = decodeURIComponent(sectionHref)
 
-      zip.file('mimetype', 'application/epub+zip')
-      zip.file(
-        'META-INF/container.xml',
-        `<?xml version="1.0"?>
-        <container version="1.0" xmlns="urn:oasis:names:tc:opendocument:xmlns:container">
-          <rootfiles>
-            <rootfile full-path="OEBPS/content.opf" media-type="application/oebps-package+xml"/>
-          </rootfiles>
-        </container>`,
-      )
       zip.file(
         'OEBPS/content.opf',
         `<?xml version="1.0" encoding="UTF-8"?>
@@ -171,18 +162,8 @@ describe('Book', function () {
 
   describe('Spine document media types', function () {
     it('uses direct supported fallbacks for spine documents and images', async function () {
-      const zip = new JSZip()
+      const zip = createEpubZip()
 
-      zip.file('mimetype', 'application/epub+zip')
-      zip.file(
-        'META-INF/container.xml',
-        `<?xml version="1.0"?>
-        <container version="1.0" xmlns="urn:oasis:names:tc:opendocument:xmlns:container">
-          <rootfiles>
-            <rootfile full-path="OEBPS/content.opf" media-type="application/oebps-package+xml"/>
-          </rootfiles>
-        </container>`,
-      )
       zip.file(
         'OEBPS/content.opf',
         `<?xml version="1.0" encoding="UTF-8"?>
@@ -248,18 +229,8 @@ describe('Book', function () {
     })
 
     it('parses .html spine documents declared as XHTML with XHTML semantics', async function () {
-      const zip = new JSZip()
+      const zip = createEpubZip()
 
-      zip.file('mimetype', 'application/epub+zip')
-      zip.file(
-        'META-INF/container.xml',
-        `<?xml version="1.0"?>
-        <container version="1.0" xmlns="urn:oasis:names:tc:opendocument:xmlns:container">
-          <rootfiles>
-            <rootfile full-path="OEBPS/content.opf" media-type="application/oebps-package+xml"/>
-          </rootfiles>
-        </container>`,
-      )
       zip.file(
         'OEBPS/content.opf',
         `<?xml version="1.0" encoding="UTF-8"?>
@@ -310,18 +281,8 @@ describe('Book', function () {
 
   describe('Fixed layout metadata', function () {
     it('uses original-resolution as a fallback viewport for fixed layout books', async function () {
-      const zip = new JSZip()
+      const zip = createEpubZip()
 
-      zip.file('mimetype', 'application/epub+zip')
-      zip.file(
-        'META-INF/container.xml',
-        `<?xml version="1.0"?>
-        <container version="1.0" xmlns="urn:oasis:names:tc:opendocument:xmlns:container">
-          <rootfiles>
-            <rootfile full-path="OEBPS/content.opf" media-type="application/oebps-package+xml"/>
-          </rootfiles>
-        </container>`,
-      )
       zip.file(
         'OEBPS/content.opf',
         `<?xml version="1.0" encoding="UTF-8"?>

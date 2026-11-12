@@ -31,13 +31,7 @@ export class BookLayoutTransactionController {
     }
   }
 
-  enqueueResize(run: (operationId: number) => Promise<void>) {
-    const operationId = ++this.operationId
-    const operation = this.operationPromise.catch(() => undefined).then(() => run(operationId))
-    this.trackOperation(operation)
-  }
-
-  enqueueRelayout(run: (operationId: number) => Promise<void>) {
+  private enqueue(run: (operationId: number) => Promise<void>) {
     const operationId = ++this.operationId
     const operation = this.operationPromise.catch(() => undefined).then(() => run(operationId))
 
@@ -58,7 +52,7 @@ export class BookLayoutTransactionController {
   }
 
   resize(tab: BookTab, width: number, height: number) {
-    this.enqueueResize((operationId) => this.runResize(tab, operationId, width, height))
+    this.enqueue((operationId) => this.runResize(tab, operationId, width, height))
   }
 
   private async runResize(tab: BookTab, operationId: number, width: number, height: number) {
@@ -100,7 +94,7 @@ export class BookLayoutTransactionController {
   }
 
   relayout(tab: BookTab, target?: string) {
-    return this.enqueueRelayout((operationId) => this.runRelayout(tab, operationId, target))
+    return this.enqueue((operationId) => this.runRelayout(tab, operationId, target))
   }
 
   private async runRelayout(tab: BookTab, operationId: number, target: string | undefined) {

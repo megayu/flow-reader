@@ -59,37 +59,23 @@ export class BookNavigationController {
     await this.track(navigation)
   }
 
-  async prev(tab: BookTab) {
+  async turnPage(tab: BookTab, direction: -1 | 1) {
     if (tab.turning) await this.waitForPending()
     const pendingLayout = tab.waitForPendingLayout()
     if (pendingLayout) await pendingLayout
 
     return this.run(tab, async () => {
       tab.preferredSectionIndex = undefined
-      tab.navigationDirection = -1
+      tab.navigationDirection = direction
       tab.allowLocationJump = false
       tab.relayoutAnchorSectionIndexes = undefined
-      await tab.commitReaderOperation(tab.rendition?.session.prev(), {
-        updateAnchor: true,
-        userNavigation: true,
-      })
-    })
-  }
-
-  async next(tab: BookTab) {
-    if (tab.turning) await this.waitForPending()
-    const pendingLayout = tab.waitForPendingLayout()
-    if (pendingLayout) await pendingLayout
-
-    return this.run(tab, async () => {
-      tab.preferredSectionIndex = undefined
-      tab.navigationDirection = 1
-      tab.allowLocationJump = false
-      tab.relayoutAnchorSectionIndexes = undefined
-      await tab.commitReaderOperation(tab.rendition?.session.next(), {
-        updateAnchor: true,
-        userNavigation: true,
-      })
+      await tab.commitReaderOperation(
+        direction === -1 ? tab.rendition?.session.prev() : tab.rendition?.session.next(),
+        {
+          updateAnchor: true,
+          userNavigation: true,
+        },
+      )
     })
   }
 
