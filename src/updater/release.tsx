@@ -140,6 +140,8 @@ export function UpdaterProvider({ children }: { children: ReactNode }) {
     [checking, checkForUpdate],
   )
   const dialogOpen = status.kind !== 'idle'
+  const notes = status.kind === 'idle' ? undefined : status.notes
+  const notesKey = useMemo(() => notes && JSON.stringify([notes, locale, provider]), [notes, locale, provider])
   const downloading = status.kind === 'downloading'
   const percent = downloading && status.total ? Math.min(100, Math.round((status.downloaded / status.total) * 100)) : 0
 
@@ -157,14 +159,7 @@ export function UpdaterProvider({ children }: { children: ReactNode }) {
           onEscapeKeyDown={(event) => downloading && event.preventDefault()}
           onInteractOutside={(event) => downloading && event.preventDefault()}
         >
-          {status.kind !== 'idle' && (
-            <UpdateNotes
-              key={JSON.stringify([status.notes, locale, provider])}
-              sections={status.notes}
-              locale={locale}
-              provider={provider}
-            />
-          )}
+          {notes && <UpdateNotes key={notesKey} sections={notes} locale={locale} provider={provider} />}
           <DialogFooter className={downloading ? 'items-center' : undefined}>
             {downloading ? (
               <div className="flex w-full items-center gap-3">
