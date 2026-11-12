@@ -27,7 +27,7 @@ const testWindowUiState: WindowUiState = {
   readerSidebarWidth: 240,
 }
 
-interface TauriMockOptions {
+export interface TauriMockOptions {
   bookSearchResults?: Record<string, BookSearchResult[]>
   books?: BookRecord[]
   contentModeSwitchConflicts?: Record<string, BookModeSwitchConflict>
@@ -405,14 +405,8 @@ export async function installTauriMock(page: Page, options: TauriMockOptions = {
             sessionId,
           })
           const response = fixtureMdictResponses[dictionaryId]?.[query]
-          if (!response) {
-            return {
-              entry: null,
-              resourceUrlPrefix: `http://dictionary.localhost/${sessionId}/${encodeURIComponent(dictionaryId)}/`,
-            }
-          }
           return {
-            ...(response as Record<string, unknown>),
+            ...(response ?? { entry: null }),
             resourceUrlPrefix: `http://dictionary.localhost/${sessionId}/${encodeURIComponent(dictionaryId)}/`,
           }
         }

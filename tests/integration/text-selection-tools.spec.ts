@@ -6,7 +6,7 @@ import { createTestBook } from '../support/book-fixtures'
 import { epubFixturePackageUrl, installEpubFixtureRoutes } from '../support/epub-fixture'
 import { msg } from '../support/i18n'
 import { selectReaderTextAndOpenMenu } from '../support/reader-selection'
-import { getDictionaryMockState, installTauriMock } from '../support/tauri-mock'
+import { getDictionaryMockState, installTauriMock, type TauriMockOptions } from '../support/tauri-mock'
 
 function iconButton(container: Locator, icon: string) {
   return container.locator(`button:has(svg.lucide-${icon})`)
@@ -92,17 +92,7 @@ function dictionaryBook(language = 'zh-CN'): BookRecord {
 
 async function setupDictionaryReader(
   page: Page,
-  zdicResponses: Record<string, string>,
-  zdicResponseDelayMs = 0,
-  merriamWebsterResponses: Record<string, unknown> = {},
-  localDictionaries: LocalDictionaryRecord[] = [],
-  stardictResponses: Record<string, Record<string, unknown>> = {},
-  mdictResponses: Record<string, Record<string, unknown>> = {},
-  mdictStylesheets: Record<string, Record<string, string>> = {},
-  bookLanguage = 'zh-CN',
-  zdicResponseSequences: Record<string, string[]> = {},
-  zdicResponseStatuses: Record<string, number> = {},
-  translationOptions: { delayMs?: number; error?: string } = {},
+  { bookLanguage = 'zh-CN', ...options }: TauriMockOptions & { bookLanguage?: string } = {},
 ) {
   await installEpubFixtureRoutes(page)
   await installTauriMock(page, {
@@ -112,23 +102,13 @@ async function setupDictionaryReader(
       dictionary: {
         zdic: { enabled: true },
         merriamWebster: {
-          apiKey: Object.keys(merriamWebsterResponses).length ? 'test-only-mw-key' : '',
-          enabled: Object.keys(merriamWebsterResponses).length > 0,
+          apiKey: Object.keys(options.merriamWebsterResponses ?? {}).length ? 'test-only-mw-key' : '',
+          enabled: Object.keys(options.merriamWebsterResponses ?? {}).length > 0,
         },
       },
       enableTextSelectionMenu: true,
     },
-    merriamWebsterResponses,
-    localDictionaries,
-    mdictResponses,
-    mdictStylesheets,
-    stardictResponses,
-    zdicResponses,
-    zdicResponseSequences,
-    zdicResponseStatuses,
-    zdicResponseDelayMs,
-    translationResponseDelayMs: translationOptions.delayMs,
-    translationError: translationOptions.error,
+    ...options,
   })
   await page.goto('/')
   await page.locator('ul.grid [data-flow-library-book-card]').filter({ hasText: 'Dictionary Fixture' }).click()
@@ -146,7 +126,7 @@ async function setupDictionaryReader(
 }
 
 async function setupTranslationReader(page: Page, options: { delayMs?: number; error?: string } = {}) {
-  return setupDictionaryReader(page, {}, 0, {}, [], {}, {}, {}, 'zh-CN', {}, {}, options)
+  return setupDictionaryReader(page, { translationResponseDelayMs: options.delayMs, translationError: options.error })
 }
 
 interface SpeechVoiceFixture {
@@ -414,7 +394,7 @@ async function selectFixtureText(page: Page, query: string, expectDictionary = t
 }
 
 test('limits cross-paragraph highlights to rendered text', async ({ page }) => {
-  await setupDictionaryReader(page, {})
+  await setupDictionaryReader(page)
 
   await page.evaluate(() => {
     const tab = (window as any).reader.focusedBookTab
@@ -490,7 +470,7 @@ test('selection speech reads Chinese with the matching system voice and toggles 
       { lang: 'zh-CN', name: 'System Chinese' },
     ],
   })
-  await setupDictionaryReader(page, { 测试: wordHtml })
+  await setupDictionaryReader(page, { zdicResponses: { 测试: wordHtml } })
   await selectFixtureText(page, '测试')
   await page.getByRole('button', { name: msg('dictionary.title'), exact: true }).click()
 
@@ -525,7 +505,7 @@ test('prefers the default voice for the detected language and resets after an er
       { lang: 'en-GB', name: 'System British' },
     ],
   })
-  await setupDictionaryReader(page, {}, 0, { sample: [] }, [], {}, {}, {}, 'en-GB')
+  await setupDictionaryReader(page, { merriamWebsterResponses: { sample: [] }, bookLanguage: 'en-GB' })
   await selectFixtureText(page, 'sample')
   await page.getByRole('button', { name: msg('dictionary.title'), exact: true }).click()
   const speak = dictionarySpeechButton(page)
@@ -550,7 +530,7 @@ test('selection speech falls back to a same-language voice when no exact locale 
   await installSpeechSynthesisMock(page, {
     voices: [{ lang: 'en-US', name: 'System English' }],
   })
-  await setupDictionaryReader(page, {}, 0, { sample: [] }, [], {}, {}, {}, 'en-AU')
+  await setupDictionaryReader(page, { merriamWebsterResponses: { sample: [] }, bookLanguage: 'en-AU' })
   await selectFixtureText(page, 'sample')
   await page.getByRole('button', { name: msg('dictionary.title'), exact: true }).click()
   const speak = dictionarySpeechButton(page)
@@ -573,7 +553,7 @@ test('selection speech falls back to a same-language voice when no exact locale 
 
 test('selection speech is hidden when the system API is unavailable', async ({ page }) => {
   await installSpeechSynthesisMock(page, { supported: false })
-  await setupDictionaryReader(page, { 测试: wordHtml })
+  await setupDictionaryReader(page, { zdicResponses: { 测试: wordHtml } })
   await selectFixtureText(page, '测试')
   await page.getByRole('button', { name: msg('dictionary.title'), exact: true }).click()
 
@@ -583,7 +563,7 @@ test('selection speech is hidden when the system API is unavailable', async ({ p
 
 test('selection speech reacts when the system voice list becomes available', async ({ page }) => {
   await installSpeechSynthesisMock(page)
-  await setupDictionaryReader(page, { 测试: wordHtml })
+  await setupDictionaryReader(page, { zdicResponses: { 测试: wordHtml } })
   await selectFixtureText(page, '测试')
   await page.getByRole('button', { name: msg('dictionary.title'), exact: true }).click()
 
@@ -606,7 +586,7 @@ test('stops active speech on every dictionary popup exit path', async ({ page })
   await installSpeechSynthesisMock(page, {
     voices: [{ lang: 'zh-CN', name: 'System Chinese' }],
   })
-  await setupDictionaryReader(page, { 测试: wordHtml })
+  await setupDictionaryReader(page, { zdicResponses: { 测试: wordHtml } })
   await selectFixtureText(page, '测试')
 
   const openDictionary = async () => {
@@ -787,7 +767,7 @@ test('resizes the source and translation regions with the splitter', async ({ pa
 })
 
 test('keeps the dictionary action disabled when no source matches the selection', async ({ page }) => {
-  await setupDictionaryReader(page, {})
+  await setupDictionaryReader(page)
   await selectFixtureText(page, 'sky', false)
 
   await expect(page.getByRole('button', { name: msg('dictionary.title'), exact: true })).toBeDisabled()
@@ -796,10 +776,12 @@ test('keeps the dictionary action disabled when no source matches the selection'
 
 test('parses supported Han Dian entries and removes active fallback content', async ({ page }) => {
   await setupDictionaryReader(page, {
-    天: characterHtml,
-    天空: wordHtml,
-    样词: modernWordHtml,
-    测: fallbackHtml,
+    zdicResponses: {
+      天: characterHtml,
+      天空: wordHtml,
+      样词: modernWordHtml,
+      测: fallbackHtml,
+    },
   })
 
   const openEntry = async (query: string) => {
@@ -845,7 +827,7 @@ test('parses supported Han Dian entries and removes active fallback content', as
 })
 
 test('copies a dictionary body selection instead of the original book selection', async ({ page }) => {
-  await setupDictionaryReader(page, { 天: characterHtml })
+  await setupDictionaryReader(page, { zdicResponses: { 天: characterHtml } })
   await selectFixtureText(page, '天')
   await page.getByRole('button', { name: msg('dictionary.title'), exact: true }).click()
 
@@ -875,7 +857,9 @@ test('copies a dictionary body selection instead of the original book selection'
 
 test('keeps the source link on parse failure and uses two-stage outside dismissal', async ({ page }) => {
   await setupDictionaryReader(page, {
-    词: '<html><body><section data-section="其他解释">无目标区</section></body></html>',
+    zdicResponses: {
+      词: '<html><body><section data-section="其他解释">无目标区</section></body></html>',
+    },
   })
   await selectFixtureText(page, '词')
   await page.getByRole('button', { name: msg('dictionary.title'), exact: true }).click()
@@ -895,7 +879,7 @@ test('keeps the source link on parse failure and uses two-stage outside dismissa
 })
 
 test('treats a Han Dian 404 as a compact missing entry without retry', async ({ page }) => {
-  await setupDictionaryReader(page, {}, 0, {}, [], {}, {}, {}, 'zh-CN', {}, { 测: 404 })
+  await setupDictionaryReader(page, { zdicResponseStatuses: { 测: 404 } })
   await selectFixtureText(page, '测')
   await page.getByRole('button', { name: msg('dictionary.title'), exact: true }).click()
 
@@ -913,13 +897,10 @@ test('retries a failed online source without displacing the scrolled dictionary 
     language: { source: 'manual', value: ['zh'] },
     name: 'Synthetic Local Dictionary',
   }
-  await setupDictionaryReader(
-    page,
-    {},
-    600,
-    {},
-    [localDictionary],
-    {
+  await setupDictionaryReader(page, {
+    zdicResponseDelayMs: 600,
+    localDictionaries: [localDictionary],
+    stardictResponses: {
       'dict-synthetic-local': {
         测: starDictEntry(
           '测',
@@ -927,13 +908,10 @@ test('retries a failed online source without displacing the scrolled dictionary 
         ),
       },
     },
-    {},
-    {},
-    'zh-CN',
-    {
+    zdicResponseSequences: {
       测: ['<html><body><p>synthetic unavailable response</p></body></html>', characterHtml],
     },
-  )
+  })
   await selectFixtureText(page, '测')
   await page.getByRole('button', { name: msg('dictionary.title'), exact: true }).click()
 
@@ -959,7 +937,7 @@ test('retries a failed online source without displacing the scrolled dictionary 
 })
 
 test('keeps the external action available while disabling empty source navigation', async ({ page }) => {
-  await setupDictionaryReader(page, {}, 0, { sample: [] }, [], {}, {}, {}, 'en-US')
+  await setupDictionaryReader(page, { merriamWebsterResponses: { sample: [] }, bookLanguage: 'en-US' })
   await selectFixtureText(page, 'sample')
   await page.getByRole('button', { name: msg('dictionary.title'), exact: true }).click()
 
@@ -981,7 +959,7 @@ test('keeps the external action available while disabling empty source navigatio
 })
 
 test('back cancels an active native lookup and restores the action menu', async ({ page }) => {
-  await setupDictionaryReader(page, { 天: characterHtml }, 2_000)
+  await setupDictionaryReader(page, { zdicResponses: { 天: characterHtml }, zdicResponseDelayMs: 2_000 })
   await selectFixtureText(page, '天')
   await page.getByRole('button', { name: msg('dictionary.title'), exact: true }).click()
   await expect(page.getByRole('dialog')).toBeVisible()
@@ -1000,7 +978,7 @@ test('back cancels an active native lookup and restores the action menu', async 
 
 test('keeps the larger popup inside a narrow horizontal reader', async ({ page }) => {
   await page.setViewportSize({ width: 620, height: 520 })
-  await setupDictionaryReader(page, { 天: characterHtml })
+  await setupDictionaryReader(page, { zdicResponses: { 天: characterHtml } })
   await selectFixtureText(page, '天')
   await page.getByRole('button', { name: msg('dictionary.title'), exact: true }).click()
 
@@ -1030,92 +1008,94 @@ test('keeps the larger popup inside a narrow horizontal reader', async ({ page }
 })
 
 test('looks up an English selection only in Merriam-Webster', async ({ page }) => {
-  await setupDictionaryReader(page, {}, 0, {
-    sky: [
-      {
-        meta: { id: 'sky:1', stems: ['sky', 'skies'] },
-        hom: 1,
-        hwi: { hw: 'sky' },
-        fl: 'noun',
-        def: [
-          {
-            sseq: [
-              [
+  await setupDictionaryReader(page, {
+    merriamWebsterResponses: {
+      sky: [
+        {
+          meta: { id: 'sky:1', stems: ['sky', 'skies'] },
+          hom: 1,
+          hwi: { hw: 'sky' },
+          fl: 'noun',
+          def: [
+            {
+              sseq: [
                 [
-                  'bs',
-                  {
-                    sense: {
-                      sn: '1 a',
-                      dt: [
-                        ['text', '{bc}the upper atmosphere seen from earth'],
-                        ['vis', [{ t: 'the {wi}sky{/wi} grew dark' }]],
-                      ],
-                    },
-                  },
-                ],
-                [
-                  'pseq',
                   [
-                    [
-                      'sense',
-                      {
-                        sn: '(1)',
-                        dt: [['text', '{bc}the region above the clouds']],
+                    'bs',
+                    {
+                      sense: {
+                        sn: '1 a',
+                        dt: [
+                          ['text', '{bc}the upper atmosphere seen from earth'],
+                          ['vis', [{ t: 'the {wi}sky{/wi} grew dark' }]],
+                        ],
                       },
-                    ],
+                    },
+                  ],
+                  [
+                    'pseq',
                     [
-                      'sense',
-                      {
-                        sn: '(2)',
-                        dt: [['text', '{bc}weather conditions']],
-                      },
+                      [
+                        'sense',
+                        {
+                          sn: '(1)',
+                          dt: [['text', '{bc}the region above the clouds']],
+                        },
+                      ],
+                      [
+                        'sense',
+                        {
+                          sn: '(2)',
+                          dt: [['text', '{bc}weather conditions']],
+                        },
+                      ],
                     ],
                   ],
                 ],
-              ],
-              [
                 [
-                  'sense',
-                  {
-                    sn: 'b',
-                    dt: [['text', '{bc}a place or condition beyond reach {sx|heaven||}']],
-                  },
+                  [
+                    'sense',
+                    {
+                      sn: 'b',
+                      dt: [['text', '{bc}a place or condition beyond reach {sx|heaven||}']],
+                    },
+                  ],
+                ],
+                [
+                  [
+                    'sense',
+                    {
+                      sn: '10 a',
+                      dt: [['text', '{bc}a definition with a two-digit number']],
+                    },
+                  ],
                 ],
               ],
-              [
-                [
-                  'sense',
-                  {
-                    sn: '10 a',
-                    dt: [['text', '{bc}a definition with a two-digit number']],
-                  },
-                ],
-              ],
-            ],
-          },
-        ],
-      },
-      {
-        meta: { id: 'sky:2', stems: ['sky', 'skied', 'skying'] },
-        hwi: { hw: 'sky' },
-        fl: 'verb',
-        def: [
-          {
-            sseq: [[['sense', { dt: [['text', '{bc}to hit high into the air']] }]]],
-          },
-        ],
-      },
-      {
-        meta: { id: 'sky blue', stems: ['sky blue'] },
-        hwi: { hw: 'sky blue' },
-        fl: 'adjective',
-        def: [
-          {
-            sseq: [[['sense', { dt: [['text', '{bc}a returned phrase to exclude']] }]]],
-          },
-        ],
-      },
-    ],
+            },
+          ],
+        },
+        {
+          meta: { id: 'sky:2', stems: ['sky', 'skied', 'skying'] },
+          hwi: { hw: 'sky' },
+          fl: 'verb',
+          def: [
+            {
+              sseq: [[['sense', { dt: [['text', '{bc}to hit high into the air']] }]]],
+            },
+          ],
+        },
+        {
+          meta: { id: 'sky blue', stems: ['sky blue'] },
+          hwi: { hw: 'sky blue' },
+          fl: 'adjective',
+          def: [
+            {
+              sseq: [[['sense', { dt: [['text', '{bc}a returned phrase to exclude']] }]]],
+            },
+          ],
+        },
+      ],
+    },
   })
   await selectFixtureText(page, 'sky')
   await page.getByRole('button', { name: msg('dictionary.title'), exact: true }).click()
@@ -1183,21 +1163,16 @@ test('looks up an English selection only in Merriam-Webster', async ({ page }) =
 })
 
 test('keeps empty dictionary sources visible beside successful results', async ({ page }) => {
-  await setupDictionaryReader(
-    page,
-    {},
-    0,
-    { sample: [] },
-    [localStarDict()],
-    {
+  await setupDictionaryReader(page, {
+    merriamWebsterResponses: { sample: [] },
+    localDictionaries: [localStarDict()],
+    stardictResponses: {
       'dict-oxford': {
         sample: starDictEntry('sample', ['a synthetic local explanation']),
       },
     },
-    {},
-    {},
-    'en-US',
-  )
+    bookLanguage: 'en-US',
+  })
   await selectFixtureText(page, 'sample')
   await page.getByRole('button', { name: msg('dictionary.title'), exact: true }).click()
 
@@ -1221,15 +1196,12 @@ test('keeps empty dictionary sources visible beside successful results', async (
 
 test('uses fixed source buttons to locate flat results and track scrolling', async ({ page }) => {
   const onlineDefinitions = Array.from({ length: 18 }, (_, index) => `synthetic online explanation ${index + 1}`)
-  await setupDictionaryReader(
-    page,
-    {},
-    0,
-    {
+  await setupDictionaryReader(page, {
+    merriamWebsterResponses: {
       sample: merriamWebsterEntry('sample', onlineDefinitions),
     },
-    [localStarDict()],
-    {
+    localDictionaries: [localStarDict()],
+    stardictResponses: {
       'dict-oxford': {
         sample: starDictEntry(
           'sample',
@@ -1237,10 +1209,8 @@ test('uses fixed source buttons to locate flat results and track scrolling', asy
         ),
       },
     },
-    {},
-    {},
-    'en-US',
-  )
+    bookLanguage: 'en-US',
+  })
   await selectFixtureText(page, 'sample')
   await page.getByRole('button', { name: msg('dictionary.title'), exact: true }).click()
 
@@ -1291,15 +1261,18 @@ test('uses fixed source buttons to locate flat results and track scrolling', asy
 })
 
 test('looks up an English selection in an enabled StarDict and releases its session', async ({ page }) => {
-  await setupDictionaryReader(page, {}, 0, {}, [localStarDict()], {
-    'dict-oxford': {
-      sky: {
-        entries: [
-          {
-            definitions: ['the region of the atmosphere seen from earth'],
-            headword: 'sky',
-          },
-        ],
+  await setupDictionaryReader(page, {
+    localDictionaries: [localStarDict()],
+    stardictResponses: {
+      'dict-oxford': {
+        sky: {
+          entries: [
+            {
+              definitions: ['the region of the atmosphere seen from earth'],
+              headword: 'sky',
+            },
+          ],
+        },
       },
     },
   })
@@ -1322,14 +1295,9 @@ test('looks up an English selection in an enabled StarDict and releases its sess
 })
 
 test('MDict follows an exact mixed-script internal key in the originating dictionary', async ({ page }) => {
-  await setupDictionaryReader(
-    page,
-    {},
-    0,
-    {},
-    [localMdict()],
-    {},
-    {
+  await setupDictionaryReader(page, {
+    localDictionaries: [localMdict()],
+    mdictResponses: {
       'dict-synthetic-zh': {
         合成查询: {
           entry: {
@@ -1345,7 +1313,7 @@ test('MDict follows an exact mixed-script internal key in the originating dictio
         },
       },
     },
-  )
+  })
   await selectFixtureText(page, '合成查询')
   await page.getByRole('button', { name: msg('dictionary.title'), exact: true }).click()
 
@@ -1385,14 +1353,10 @@ test('MDict keeps internal links in a source-only bounded detail history', async
       <iframe src="https://tracker.invalid/frame"></iframe>
       <audio src="sound.mp3"></audio>
     </main>`
-  await setupDictionaryReader(
-    page,
-    { 词: wordHtml },
-    0,
-    {},
-    [localMdict()],
-    {},
-    {
+  await setupDictionaryReader(page, {
+    zdicResponses: { 词: wordHtml },
+    localDictionaries: [localMdict()],
+    mdictResponses: {
       'dict-synthetic-zh': {
         词: {
           entry: { headword: '词', html: richHtml },
@@ -1408,7 +1372,7 @@ test('MDict keeps internal links in a source-only bounded detail history', async
         },
       },
     },
-    {
+    mdictStylesheets: {
       'dict-synthetic-zh': {
         'cy3.css': `
           @import url("https://tracker.invalid/import.css");
@@ -1419,7 +1383,7 @@ test('MDict keeps internal links in a source-only bounded detail history', async
         `,
       },
     },
-  )
+  })
   await selectFixtureText(page, '词')
   await page.getByRole('button', { name: msg('dictionary.title'), exact: true }).click()
 
@@ -1542,14 +1506,10 @@ test('MDict keeps internal links in a source-only bounded detail history', async
 })
 
 test('MDict keeps readable text when an optional stylesheet is missing', async ({ page }) => {
-  await setupDictionaryReader(
-    page,
-    { 词: wordHtml },
-    0,
-    {},
-    [localMdict()],
-    {},
-    {
+  await setupDictionaryReader(page, {
+    zdicResponses: { 词: wordHtml },
+    localDictionaries: [localMdict()],
+    mdictResponses: {
       'dict-synthetic-zh': {
         词: {
           entry: {
@@ -1559,7 +1519,7 @@ test('MDict keeps readable text when an optional stylesheet is missing', async (
         },
       },
     },
-  )
+  })
   await selectFixtureText(page, '词')
   await page.getByRole('button', { name: msg('dictionary.title'), exact: true }).click()
 
@@ -1579,14 +1539,9 @@ test('MDict does not enlarge or navigate linked images', async ({ page }) => {
       contentType: 'image/png',
     }),
   )
-  await setupDictionaryReader(
-    page,
-    {},
-    0,
-    {},
-    [localMdict()],
-    {},
-    {
+  await setupDictionaryReader(page, {
+    localDictionaries: [localMdict()],
+    mdictResponses: {
       'dict-synthetic-zh': {
         图片词: {
           entry: {
@@ -1603,7 +1558,7 @@ test('MDict does not enlarge or navigate linked images', async ({ page }) => {
         },
       },
     },
-    {
+    mdictStylesheets: {
       'dict-synthetic-zh': {
         'fixture.css': `
           .page { width: 100%; cursor: pointer; }
@@ -1611,7 +1566,7 @@ test('MDict does not enlarge or navigate linked images', async ({ page }) => {
         `,
       },
     },
-  )
+  })
   await selectFixtureText(page, '图片词')
   await page.getByRole('button', { name: msg('dictionary.title'), exact: true }).click()
 
@@ -1633,21 +1588,17 @@ test('MDict does not enlarge or navigate linked images', async ({ page }) => {
 })
 
 test('outside dismissal releases the local dictionary session before showing actions', async ({ page }) => {
-  await setupDictionaryReader(
-    page,
-    { 词: wordHtml },
-    0,
-    {},
-    [localMdict()],
-    {},
-    {
+  await setupDictionaryReader(page, {
+    zdicResponses: { 词: wordHtml },
+    localDictionaries: [localMdict()],
+    mdictResponses: {
       'dict-synthetic-zh': {
         词: {
           entry: { headword: '词', html: '<p>关闭路径测试</p>' },
         },
       },
     },
-  )
+  })
   await selectFixtureText(page, '词')
   await page.getByRole('button', { name: msg('dictionary.title'), exact: true }).click()
   await expect(dictionaryPopup(page).locator('[data-dictionary-rich-content]')).toBeVisible()
