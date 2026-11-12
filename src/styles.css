@@ -489,9 +489,13 @@ textarea.scroll::-webkit-resizer {
 
 .scroll-h {
   @apply overflow-x-auto;
+  scrollbar-width: none;
 }
-.scroll-h::-webkit-scrollbar {
-  display: none; /* Safari and Chrome */
+
+@supports not (scrollbar-width: none) {
+  .scroll-h::-webkit-scrollbar {
+    display: none;
+  }
 }
 
 .flow-reader-tab[data-flow-tab-icon-only] .flow-reader-tab-label {
