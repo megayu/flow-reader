@@ -1,3 +1,7 @@
+export function escapePathDelimiters(path: string) {
+  return path.replace(/[%?#]/g, encodeURIComponent)
+}
+
 export function decodeHref(href: string): string
 export function decodeHref(href: string | null): string | null
 export function decodeHref(href: string | null) {
@@ -6,7 +10,10 @@ export function decodeHref(href: string | null) {
   }
 
   try {
-    return decodeURIComponent(href)
+    const path = stripHrefSuffix(href)
+    // Keep filename delimiters escaped until the href is consumed as a filesystem path.
+    const decodedPath = escapePathDelimiters(decodeURIComponent(path))
+    return decodedPath + decodeURIComponent(href.slice(path.length))
   } catch (_error) {
     return href
   }

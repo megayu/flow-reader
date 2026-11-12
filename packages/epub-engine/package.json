@@ -4,6 +4,7 @@
   "description": "Flow Reader's internal EPUB parser and renderer",
   "exports": {
     ".": "./src/index.ts",
+    "./href": "./src/utils/href.ts",
     "./navigation": "./src/navigation.ts",
     "./packaging": "./src/packaging.ts",
     "./rendition": "./src/public-rendition.ts",

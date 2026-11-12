@@ -1,3 +1,5 @@
+import { decodeHref, stripHrefSuffix } from '@flow/epub-engine/href'
+
 export interface HrefSectionLike {
   href?: string
   canonical?: string
@@ -25,22 +27,21 @@ export function normalizeHrefPath(href: string | undefined) {
   if (!href) return ''
 
   return normalizePathSegments(
-    safeDecodeHref(href)
-      .split('#')[0]!
+    decodeHref(stripHrefSuffix(href))
       .replace(/\\/g, '/')
       .replace(/^[a-z][a-z0-9+.-]*:\/\/[^/]+/i, ''),
   )
 }
 
 export function resolveLinkedHrefPath(baseHref: string | undefined, linkedPath: string) {
-  const path = normalizeHrefPath(linkedPath)
+  const path = stripHrefSuffix(linkedPath)
   if (!path) return normalizeHrefPath(baseHref)
-  if (linkedPath.startsWith('/')) return path
+  if (path.startsWith('/') || /^[a-z][a-z0-9+.-]*:\/\//i.test(path)) return normalizeHrefPath(path)
 
   const base = normalizeHrefPath(baseHref)
   const baseDir = base.includes('/') ? base.slice(0, base.lastIndexOf('/')) : ''
 
-  return normalizePathSegments(baseDir ? `${baseDir}/${linkedPath}` : linkedPath)
+  return normalizeHrefPath(baseDir ? `${baseDir}/${path}` : path)
 }
 
 export function sameHref(a: string | undefined, b: string | undefined) {
@@ -70,10 +71,9 @@ export function findSectionByLinkedHref<T extends HrefSectionLike>(
 }
 
 function normalizePathSegments(path: string) {
-  const [pathname = ''] = path.split(/[?#]/)
   const parts: string[] = []
 
-  pathname
+  path
     .replace(/^\/+/, '')
     .split('/')
     .forEach((part) => {

@@ -1,3 +1,5 @@
+import { escapePathDelimiters } from './href'
+
 export function isTauriAssetUrl(
   url: Pick<URL, 'protocol' | 'hostname'>,
 ): boolean
@@ -20,7 +22,7 @@ export function hasEncodedPathSeparators(pathname: string) {
 
 export function decodeAssetPath(pathname: string) {
   var encodedPath = pathname.charAt(0) === '/' ? pathname.slice(1) : pathname
-  var decodedPath = window.decodeURIComponent(encodedPath).replace(/\\/g, '/')
+  var decodedPath = escapePathDelimiters(window.decodeURIComponent(encodedPath)).replace(/\\/g, '/')
 
   return decodedPath.charAt(0) === '/' ? decodedPath : '/' + decodedPath
 }
@@ -35,5 +37,6 @@ export function encodeAssetPath(
     normalized = normalized.slice(1)
   }
 
-  return '/' + window.encodeURIComponent(normalized)
+  const filesystemPath = normalized.replace(/%(?:25|23|3f)/gi, (escape) => decodeURIComponent(escape))
+  return '/' + window.encodeURIComponent(filesystemPath)
 }

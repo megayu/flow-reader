@@ -51,3 +51,8 @@ test('compares encoded and decoded reader resource paths', () => {
   assert.equal(sameHref('Text/%2A%3Achapter%3Aone.xhtml', 'Text/*:chapter:one.xhtml'), true)
   assert.equal(sameHref('http://localhost:7127/OEBPS/Images/%2A%3Aplate%3A1.jpg', 'Images/*:plate:1.jpg'), true)
 })
+
+test('distinguishes chapter filenames containing encoded hash characters', () => {
+  const sections = [{ href: 'Text/Part%231.xhtml' }, { href: 'Text/Part%232.xhtml' }]
+  assert.equal(findSectionByLinkedHref(sections, 'Text/toc.xhtml', 'Part%232.xhtml#note'), sections[1])
+})
