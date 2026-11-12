@@ -1903,6 +1903,7 @@ export class BookTab {
 
       this.sectionInfoPromises.delete(section.index)
       this.sectionDocumentAccess.delete(section.index)
+      this.bodyTextCache.delete(String(section.index))
       loadedCount -= 1
     }
   }
