@@ -39,7 +39,7 @@ regex = "1"
 image = { version = "0.25.10", default-features = false, features = ["jpeg", "png"] }
 webp = { version = "0.3.1", default-features = false }
 png = "0.18"
-zstd = "0.14"
+zstd = { version = "0.14", default-features = false }
 reqwest = { version = "0.13.4", default-features = false, features = ["gzip", "native-tls", "system-proxy"] }
 tokio-util = { version = "0.7.18", features = ["rt"] }
 
