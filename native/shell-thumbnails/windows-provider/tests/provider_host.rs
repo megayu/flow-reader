@@ -134,12 +134,9 @@ fn exported_provider_renders_requested_dib_sizes_from_an_epub_stream() {
 }
 
 fn provider_dll_path() -> PathBuf {
-    let executable = std::env::current_exe().unwrap();
-    executable
-        .parent()
-        .and_then(|deps| deps.parent())
-        .unwrap()
-        .join("flow_reader_thumbnail.dll")
+    std::env::var_os("FLOW_THUMBNAIL_PROVIDER_DLL")
+        .map(PathBuf::from)
+        .expect("run pnpm check:native-rust to build and locate the provider DLL")
 }
 
 fn synthetic_epub() -> Vec<u8> {

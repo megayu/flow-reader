@@ -15,7 +15,7 @@ pub(crate) fn set_server_lock(locked: bool) {
     if locked {
         SERVER_LOCKS.fetch_add(1, Ordering::Relaxed);
     } else {
-        let _ = SERVER_LOCKS.fetch_update(Ordering::Release, Ordering::Relaxed, |value| {
+        let _ = SERVER_LOCKS.try_update(Ordering::Release, Ordering::Relaxed, |value| {
             value.checked_sub(1)
         });
     }

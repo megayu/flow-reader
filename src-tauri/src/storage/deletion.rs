@@ -369,7 +369,7 @@ pub(super) fn rename_path_for_deletion(path: &Path) -> Result<Option<PathBuf>, S
     let base = format!("{PENDING_DELETE_PREFIX}{}", name.to_string_lossy());
     loop {
         let index = DELETE_SEQUENCE
-            .fetch_update(
+            .try_update(
                 std::sync::atomic::Ordering::Relaxed,
                 std::sync::atomic::Ordering::Relaxed,
                 |index| index.checked_add(1),

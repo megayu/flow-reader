@@ -40,7 +40,7 @@
     "check:epub-engine:ci": "pnpm --filter @flow/epub-engine test:ci",
     "check:rust": "pnpm rust:format:check && pnpm rust:lint && pnpm rust:test",
     "check:crates": "cargo fmt --manifest-path crates/Cargo.toml --all -- --check && cargo clippy --manifest-path crates/Cargo.toml --workspace --all-targets --all-features -- -D warnings && cargo test --manifest-path crates/Cargo.toml --workspace",
-    "check:native-rust": "cargo fmt --manifest-path native/shell-thumbnails/Cargo.toml --all -- --check && cargo clippy --manifest-path native/shell-thumbnails/Cargo.toml --workspace --all-targets --all-features -- -D warnings && cargo build --manifest-path native/shell-thumbnails/Cargo.toml --workspace && cargo test --manifest-path native/shell-thumbnails/Cargo.toml --workspace",
+    "check:native-rust": "cargo fmt --manifest-path native/shell-thumbnails/Cargo.toml --all -- --check && cargo clippy --manifest-path native/shell-thumbnails/Cargo.toml --workspace --all-targets --all-features -- -D warnings && node tests/support/run-native-rust.ts",
     "check:base": "pnpm biome:check && pnpm typecheck && pnpm test:unit",
     "check:extended": "pnpm verify --checks epub-engine,rust,crates,native-rust,integration-chromium,integration-webkit",
     "check": "pnpm check:base && pnpm build",
