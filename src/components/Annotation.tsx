@@ -7,7 +7,6 @@ import {
   annotationOverlayColor,
   annotationOverlayOpacity,
 } from '../annotation'
-import { useColorScheme } from '../hooks/theme/useColorScheme'
 import type { BookTab } from '../models/reader'
 
 const definitionPalette = [
@@ -266,11 +265,11 @@ const Definitions: React.FC<DefinitionsProps> = ({ active, definitions, tab, dar
 
 interface AnnotationsProps {
   active: boolean
+  dark: boolean
   tab: BookTab
 }
-export const Annotations: React.FC<AnnotationsProps> = ({ active, tab }) => {
+export const Annotations: React.FC<AnnotationsProps> = ({ active, dark, tab }) => {
   const { overlayState, visibleSectionIndexes, viewVersion, overlayVersion, rendition } = useSnapshot(tab)
-  const { dark } = useColorScheme()
 
   useEffect(() => {
     const annotations = rendition?.annotations
@@ -331,7 +330,7 @@ export const Annotations: React.FC<AnnotationsProps> = ({ active, tab }) => {
   return (
     <>
       <FindMatches active={active} tab={tab} />
-      <Definitions active={active} definitions={overlayState.definitions} tab={tab} dark={!!dark} />
+      <Definitions active={active} definitions={overlayState.definitions} tab={tab} dark={dark} />
     </>
   )
 }

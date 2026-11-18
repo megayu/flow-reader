@@ -603,7 +603,7 @@ const BookPane: React.FC<BookPaneProps> = React.memo(function BookPane({ active,
   const pageAppearance = typography.pageAppearance
   const typographyStyleSignature = useMemo(() => createTypographyStyleSignature(typography), [typography])
   const settingsReady = useSettingsReady()
-  const { dark } = useColorScheme()
+  const dark = useColorScheme()
 
   const { isScrolledDocument, rendition, rendered, turning, paginationVersion, viewVersion } = useSnapshot(tab)
   useLayoutEffect(() => {
@@ -757,7 +757,6 @@ const BookPane: React.FC<BookPaneProps> = React.memo(function BookPane({ active,
   })
 
   useEffect(() => {
-    if (dark === undefined) return
     // set `!important` when in dark mode
     rendition?.themes.overrideProperty('color', dark ? '#bfc8ca' : '#3f484a', dark)
   }, [rendition, dark])
@@ -841,7 +840,7 @@ const BookPane: React.FC<BookPaneProps> = React.memo(function BookPane({ active,
           )}
         />
         {!zenMode && active && <TextSelectionMenu tab={tab} onChapterFind={openChapterFind} />}
-        <Annotations active={active} tab={tab} />
+        <Annotations active={active} tab={tab} dark={dark} />
         {active && externalLink && (
           <ExternalLinkPopover
             preview={externalLink}

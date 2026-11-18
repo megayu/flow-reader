@@ -104,7 +104,11 @@ import { TocView } from './viewlets/TocView'
 import { TypographyView } from './viewlets/TypographyView'
 
 export const Layout: React.FC<PropsWithChildren> = ({ children }) => {
-  useColorScheme()
+  const dark = useColorScheme()
+
+  useEffect(() => {
+    document.documentElement.classList.toggle('dark', dark)
+  }, [dark])
 
   const [settingsOpen, setSettingsOpen] = useSettingsDialogOpen()
   const [action, setAction] = useReaderActionState()

@@ -393,14 +393,13 @@ export function useTypographySettingValues() {
 
 export function useColorSchemeSetting() {
   const scheme = useAppStore((state) => state.settings.theme?.scheme)
-  const setSettings = useAppStore((state) => state.setSettings)
 
   useEffect(() => {
     if (IS_SERVER) return
     void loadSettings()
   }, [])
 
-  return [scheme, setSettings] as const
+  return scheme
 }
 
 export function useSettingsReady() {
