@@ -1,6 +1,7 @@
 import {
   type ChangeEventHandler,
   type FocusEventHandler,
+  type InputHTMLAttributes,
   type KeyboardEventHandler,
   type PointerEventHandler,
   type Ref,
@@ -23,8 +24,10 @@ interface EditableControlProps {
   onValueChange?: (value: string) => void
 }
 
-interface EditableControlOptions<T extends EditableControlElement> extends EditableControlProps {
-  forwardedRef?: Ref<T>
+interface EditableControlOptions<T extends EditableControlElement>
+  extends EditableControlProps,
+    Pick<InputHTMLAttributes<T>, 'autoComplete' | 'autoCorrect' | 'autoCapitalize' | 'spellCheck'> {
+  ref?: Ref<T>
   onBlur?: FocusEventHandler<T>
   onChange?: ChangeEventHandler<T>
   onFocus?: FocusEventHandler<T>
@@ -87,10 +90,14 @@ function exitEditableControl(element: EditableControlElement, previousTarget: HT
   element.blur()
 }
 
-function useEditableControl<T extends EditableControlElement>({
+function useEditableControl<T extends EditableControlElement, Props>({
+  autoComplete = 'off',
+  autoCorrect = 'off',
+  autoCapitalize = 'off',
+  spellCheck = false,
   escapeBehavior = 'restore',
   focusBehavior = 'end',
-  forwardedRef,
+  ref: forwardedRef,
   onBlur,
   onChange,
   onExitEditing,
@@ -100,7 +107,8 @@ function useEditableControl<T extends EditableControlElement>({
   onPointerDown,
   onPointerUp,
   onValueChange,
-}: EditableControlOptions<T>) {
+  ...props
+}: EditableControlOptions<T> & Props) {
   const editStartValueRef = useRef<string | undefined>(undefined)
   const exitFocusTargetRef = useRef<HTMLElement | null>(null)
   const pointerDownRef = useRef(false)
@@ -212,6 +220,12 @@ function useEditableControl<T extends EditableControlElement>({
   )
 
   return {
+    autoComplete,
+    autoCorrect,
+    autoCapitalize,
+    spellCheck,
+    'data-flow-editable-control': escapeBehavior === 'none' ? undefined : '',
+    ...props,
     onBlur: handleBlur,
     onChange: handleChange,
     onFocus: handleFocus,
