@@ -6,6 +6,7 @@ use super::commands::{
 };
 use super::epub_import::read_bounded_bytes;
 use super::settings::{flush_settings_impl, update_settings_impl};
+use super::temp_root;
 use super::text_import::{text_import_filename_metadata, text_section_xhtml_for_volume};
 use super::{
     AppStorage, BOOK_FILE, BOOK_STATE_VERSION, BOOKS_DIR, BookContentMode, BookExportFormat, BookModeSwitchConflict,
@@ -649,11 +650,7 @@ fn write_book_dir(storage: &AppStorage, id: &str, marker: &str) {
 
 #[test]
 fn delete_books_rejects_ids_outside_the_library_without_touching_the_path() {
-    let nonce = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos();
-    let root = std::env::temp_dir().join(format!(
-        "flow-reader-delete-boundary-test-{}-{nonce}",
-        std::process::id()
-    ));
+    let root = temp_root("flow-reader-delete-boundary-test");
     let storage = test_storage_with_book(&root, test_library_book_with_id("book-a", BookSourceFormat::Epub));
     let outside = root.with_extension("outside");
     fs::create_dir_all(&outside).unwrap();
@@ -671,11 +668,7 @@ fn delete_books_rejects_ids_outside_the_library_without_touching_the_path() {
 
 #[test]
 fn delete_books_renames_all_book_directories_in_place_before_cleanup() {
-    let nonce = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos();
-    let root = std::env::temp_dir().join(format!(
-        "flow-reader-deferred-delete-test-{}-{nonce}",
-        std::process::id()
-    ));
+    let root = temp_root("flow-reader-deferred-delete-test");
     let storage = test_storage_with_books(
         &root,
         vec![
@@ -718,8 +711,7 @@ fn delete_books_renames_all_book_directories_in_place_before_cleanup() {
 
 #[test]
 fn cache_clear_preserves_working_content_without_relying_on_saved_edit_revisions() {
-    let nonce = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos();
-    let root = std::env::temp_dir().join(format!("flow-reader-cache-boundary-{}-{nonce}", std::process::id()));
+    let root = temp_root("flow-reader-cache-boundary");
     let cases = [
         // Equal revisions also represent a restart after body write but before library save.
         ("editable-epub", BookSourceFormat::Epub, true, 1, None, true),
@@ -798,8 +790,7 @@ fn cache_clear_preserves_working_content_without_relying_on_saved_edit_revisions
 
 #[test]
 fn cache_clear_deletes_only_external_books_with_missing_sources() {
-    let nonce = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos();
-    let root = std::env::temp_dir().join(format!("flow-reader-cache-missing-{}-{nonce}", std::process::id()));
+    let root = temp_root("flow-reader-cache-missing");
     let books = ["missing-external", "existing-external", "missing-library"].map(|id| {
         let mut book = test_library_book_with_id(id, BookSourceFormat::Epub);
         if id != "missing-library" {
@@ -835,8 +826,7 @@ fn cache_clear_deletes_only_external_books_with_missing_sources() {
 
 #[test]
 fn cache_clear_discards_only_closed_edits_without_requiring_active_sources() {
-    let nonce = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos();
-    let root = std::env::temp_dir().join(format!("flow-reader-cache-discard-{}-{nonce}", std::process::id()));
+    let root = temp_root("flow-reader-cache-discard");
     let books = ["closed", "active"].map(|id| {
         let mut book = test_library_book_with_id(id, BookSourceFormat::Txt);
         book.revision = 2;
@@ -892,11 +882,7 @@ fn cache_clear_discards_only_closed_edits_without_requiring_active_sources() {
 
 #[test]
 fn startup_cleanup_recovers_only_unambiguous_uncommitted_deletes() {
-    let nonce = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos();
-    let root = std::env::temp_dir().join(format!(
-        "flow-reader-startup-cleanup-test-{}-{nonce}",
-        std::process::id()
-    ));
+    let root = temp_root("flow-reader-startup-cleanup-test");
     let storage = test_storage_with_books(
         &root,
         ["book-a", "book-b", "book-c", "book-d", "book-e"]
@@ -966,11 +952,7 @@ fn startup_cleanup_recovers_only_unambiguous_uncommitted_deletes() {
 
 #[test]
 fn text_preview_does_not_retain_full_document_for_later_import() {
-    let nonce = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos();
-    let root = std::env::temp_dir().join(format!(
-        "flow-reader-text-prepare-reuse-test-{}-{nonce}",
-        std::process::id()
-    ));
+    let root = temp_root("flow-reader-text-prepare-reuse-test");
     let source = root.join("novel.txt");
     fs::create_dir_all(&root).unwrap();
     let original = format!(
@@ -1021,11 +1003,7 @@ fn text_preview_does_not_retain_full_document_for_later_import() {
 
 #[test]
 fn failed_text_import_does_not_mutate_existing_library_record() {
-    let nonce = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos();
-    let root = std::env::temp_dir().join(format!(
-        "flow-reader-text-import-rollback-test-{}-{nonce}",
-        std::process::id()
-    ));
+    let root = temp_root("flow-reader-text-import-rollback-test");
     let source = root.join("novel.txt");
     fs::create_dir_all(&root).unwrap();
     fs::write(&source, "Chapter 1\nSynthetic paragraph.\n").unwrap();
@@ -1115,11 +1093,7 @@ fn managed_text_source_adoption_does_not_rewrite_current_internal_content() {
 
 #[test]
 fn referenced_text_import_materializes_on_epub_export() {
-    let nonce = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos();
-    let root = std::env::temp_dir().join(format!(
-        "flow-reader-text-reference-import-test-{}-{nonce}",
-        std::process::id()
-    ));
+    let root = temp_root("flow-reader-text-reference-import-test");
     let source = root.join("referenced.txt");
     fs::create_dir_all(&root).unwrap();
     fs::write(&source, "第1章 开始\n第一段。\n第二段。\n").unwrap();
@@ -1175,11 +1149,7 @@ fn referenced_text_import_materializes_on_epub_export() {
 
 #[test]
 fn text_import_reprepares_when_prepared_file_metadata_changes() {
-    let nonce = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos();
-    let root = std::env::temp_dir().join(format!(
-        "flow-reader-text-prepare-stale-test-{}-{nonce}",
-        std::process::id()
-    ));
+    let root = temp_root("flow-reader-text-prepare-stale-test");
     let source = root.join("novel.txt");
     fs::create_dir_all(&root).unwrap();
     fs::write(&source, "第1章 旧内容\n旧段落。\n").unwrap();
@@ -1223,11 +1193,7 @@ fn text_import_reprepares_when_prepared_file_metadata_changes() {
 
 #[test]
 fn text_preview_prepares_files_concurrently() {
-    let nonce = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos();
-    let root = std::env::temp_dir().join(format!(
-        "flow-reader-text-prepare-concurrent-test-{}-{nonce}",
-        std::process::id()
-    ));
+    let root = temp_root("flow-reader-text-prepare-concurrent-test");
     let first = root.join("first.txt");
     let second = root.join("second.txt");
     fs::create_dir_all(&root).unwrap();
@@ -1257,11 +1223,7 @@ fn text_preview_prepares_files_concurrently() {
 
 #[test]
 fn text_import_prepares_files_concurrently_before_ordered_commit() {
-    let nonce = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos();
-    let root = std::env::temp_dir().join(format!(
-        "flow-reader-text-import-concurrent-test-{}-{nonce}",
-        std::process::id()
-    ));
+    let root = temp_root("flow-reader-text-import-concurrent-test");
     let first = root.join("first.txt");
     let second = root.join("second.txt");
     fs::create_dir_all(&root).unwrap();
@@ -1302,11 +1264,7 @@ fn text_import_prepares_files_concurrently_before_ordered_commit() {
 
 #[test]
 fn text_import_materializes_prepared_files_with_bounded_handoff() {
-    let nonce = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos();
-    let root = std::env::temp_dir().join(format!(
-        "flow-reader-text-import-bounded-handoff-test-{}-{nonce}",
-        std::process::id()
-    ));
+    let root = temp_root("flow-reader-text-import-bounded-handoff-test");
     fs::create_dir_all(&root).unwrap();
     let worker_limit = std::thread::available_parallelism()
         .map(|cpus| cpus.get())
@@ -1344,11 +1302,7 @@ fn text_import_materializes_prepared_files_with_bounded_handoff() {
 
 #[test]
 fn text_import_does_not_build_search_cache_in_visible_path() {
-    let nonce = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos();
-    let root = std::env::temp_dir().join(format!(
-        "flow-reader-text-import-no-search-cache-test-{}-{nonce}",
-        std::process::id()
-    ));
+    let root = temp_root("flow-reader-text-import-no-search-cache-test");
     let source = root.join("novel.txt");
     fs::create_dir_all(&root).unwrap();
     fs::write(&source, "第1章 开始\n第一段。\n第二段。\n").unwrap();
@@ -1729,11 +1683,7 @@ fn write_minimal_epub_with_first_image_spine_page(path: &Path, cover_bytes: &[u8
 
 #[test]
 fn epub_import_copies_source_without_unpacking_or_indexing() {
-    let nonce = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos();
-    let root = std::env::temp_dir().join(format!(
-        "flow-reader-epub-stream-import-test-{}-{nonce}",
-        std::process::id()
-    ));
+    let root = temp_root("flow-reader-epub-stream-import-test");
     let source = root.join("streamed.epub");
     write_minimal_epub_file(&source, "Streamed Book", "streamed body");
     let storage = test_storage_with_books(&root, Vec::new());
@@ -1768,11 +1718,7 @@ fn epub_import_copies_source_without_unpacking_or_indexing() {
 
 #[test]
 fn referenced_epub_import_materializes_on_first_open() {
-    let nonce = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos();
-    let root = std::env::temp_dir().join(format!(
-        "flow-reader-epub-reference-import-test-{}-{nonce}",
-        std::process::id()
-    ));
+    let root = temp_root("flow-reader-epub-reference-import-test");
     let source = root.join("referenced.epub");
     write_minimal_epub_file(&source, "Referenced Book", "referenced body");
     let storage = test_storage_with_books(&root, Vec::new());
@@ -1804,8 +1750,7 @@ fn referenced_epub_import_materializes_on_first_open() {
 
 #[test]
 fn external_epub_open_creates_external_record_without_library_entry() {
-    let nonce = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos();
-    let root = std::env::temp_dir().join(format!("flow-reader-external-open-test-{}-{nonce}", std::process::id()));
+    let root = temp_root("flow-reader-external-open-test");
     let source = root.join("external.epub");
     write_minimal_epub_file(&source, "External Book", "external body");
     let storage = test_storage_with_books(&root, Vec::new());
@@ -1846,11 +1791,7 @@ fn external_epub_open_creates_external_record_without_library_entry() {
 
 #[test]
 fn referenced_archive_only_epub_fails_after_source_disappears() {
-    let nonce = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos();
-    let root = std::env::temp_dir().join(format!(
-        "flow-reader-archive-reference-missing-test-{}-{nonce}",
-        std::process::id()
-    ));
+    let root = temp_root("flow-reader-archive-reference-missing-test");
     let source = root.join("archive-only.epub");
     write_minimal_epub_with_invalid_windows_entry(&source);
     let storage = test_storage_with_books(&root, Vec::new());
@@ -1877,11 +1818,7 @@ fn referenced_archive_only_epub_fails_after_source_disappears() {
 
 #[test]
 fn referenced_archive_only_epub_accepts_changed_source() {
-    let nonce = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos();
-    let root = std::env::temp_dir().join(format!(
-        "flow-reader-archive-reference-changed-test-{}-{nonce}",
-        std::process::id()
-    ));
+    let root = temp_root("flow-reader-archive-reference-changed-test");
     let source = root.join("archive-only.epub");
     write_minimal_epub_with_invalid_windows_entry(&source);
     let storage = test_storage_with_books(&root, Vec::new());
@@ -1909,11 +1846,7 @@ fn referenced_archive_only_epub_accepts_changed_source() {
 
 #[test]
 fn external_epub_cleanup_keeps_metadata_and_state_for_later_promotion() {
-    let nonce = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos();
-    let root = std::env::temp_dir().join(format!(
-        "flow-reader-external-cleanup-test-{}-{nonce}",
-        std::process::id()
-    ));
+    let root = temp_root("flow-reader-external-cleanup-test");
     let source = root.join("external-cleanup.epub");
     write_minimal_epub_file(&source, "External Cleanup", "external body");
     let storage = test_storage_with_books(&root, Vec::new());
@@ -1952,11 +1885,7 @@ fn external_epub_cleanup_keeps_metadata_and_state_for_later_promotion() {
 
 #[test]
 fn external_epub_open_prefers_existing_library_book_by_hash() {
-    let nonce = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos();
-    let root = std::env::temp_dir().join(format!(
-        "flow-reader-external-existing-library-test-{}-{nonce}",
-        std::process::id()
-    ));
+    let root = temp_root("flow-reader-external-existing-library-test");
     let source = root.join("existing.epub");
     write_minimal_epub_file(&source, "Existing Library", "existing body");
     let storage = test_storage_with_books(&root, Vec::new());
@@ -1974,8 +1903,7 @@ fn external_epub_open_prefers_existing_library_book_by_hash() {
 
 #[test]
 fn opening_managed_book_epub_uses_existing_book_without_hash_matching() {
-    let nonce = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos();
-    let root = std::env::temp_dir().join(format!("flow-reader-managed-open-test-{}-{nonce}", std::process::id()));
+    let root = temp_root("flow-reader-managed-open-test");
     let source = root.join("source.epub");
     write_minimal_epub_file(&source, "Managed Original", "original body");
     let storage = test_storage_with_books(&root, Vec::new());
@@ -2010,11 +1938,7 @@ fn opening_managed_book_epub_uses_existing_book_without_hash_matching() {
 
 #[test]
 fn importing_open_external_epub_promotes_metadata_and_state_in_place() {
-    let nonce = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos();
-    let root = std::env::temp_dir().join(format!(
-        "flow-reader-external-promote-open-test-{}-{nonce}",
-        std::process::id()
-    ));
+    let root = temp_root("flow-reader-external-promote-open-test");
     let source = root.join("promote-open.epub");
     write_minimal_epub_file(&source, "Promote Open", "promote body");
     let storage = test_storage_with_books(&root, Vec::new());
@@ -2058,11 +1982,7 @@ fn importing_open_external_epub_promotes_metadata_and_state_in_place() {
 
 #[test]
 fn importing_persisted_external_epub_promotes_disk_metadata_and_state() {
-    let nonce = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos();
-    let root = std::env::temp_dir().join(format!(
-        "flow-reader-external-promote-disk-test-{}-{nonce}",
-        std::process::id()
-    ));
+    let root = temp_root("flow-reader-external-promote-disk-test");
     let source = root.join("promote-disk.epub");
     write_minimal_epub_file(&source, "Promote Disk", "promote body");
     let storage = test_storage_with_books(&root, Vec::new());
@@ -2093,11 +2013,7 @@ fn importing_persisted_external_epub_promotes_disk_metadata_and_state() {
 }
 
 fn epub_import_extracts_cover_from_percent_encoded_zip_path() {
-    let nonce = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos();
-    let root = std::env::temp_dir().join(format!(
-        "flow-reader-epub-encoded-cover-test-{}-{nonce}",
-        std::process::id()
-    ));
+    let root = temp_root("flow-reader-epub-encoded-cover-test");
     let source = root.join("encoded-cover.epub");
     let cover_bytes = b"encoded-cover-bytes";
     write_minimal_epub_with_percent_encoded_cover(&source, cover_bytes);
@@ -2163,11 +2079,7 @@ fn epub_materialization_repairs_plain_png_cover_when_another_resource_is_encrypt
 }
 
 fn epub_import_extracts_cover_from_xhtml_img_cover_page() {
-    let nonce = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos();
-    let root = std::env::temp_dir().join(format!(
-        "flow-reader-epub-xhtml-img-cover-test-{}-{nonce}",
-        std::process::id()
-    ));
+    let root = temp_root("flow-reader-epub-xhtml-img-cover-test");
     let source = root.join("xhtml-img-cover.epub");
     let cover_bytes = b"xhtml-img-cover-bytes";
     write_minimal_epub_with_xhtml_cover_image(
@@ -2189,11 +2101,7 @@ fn epub_import_extracts_cover_from_xhtml_img_cover_page() {
 }
 
 fn epub_import_extracts_cover_from_xhtml_svg_image_cover_page() {
-    let nonce = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos();
-    let root = std::env::temp_dir().join(format!(
-        "flow-reader-epub-xhtml-svg-cover-test-{}-{nonce}",
-        std::process::id()
-    ));
+    let root = temp_root("flow-reader-epub-xhtml-svg-cover-test");
     let source = root.join("xhtml-svg-cover.epub");
     let cover_bytes = b"xhtml-svg-cover-bytes";
     write_minimal_epub_with_xhtml_cover_image(
@@ -2215,11 +2123,7 @@ fn epub_import_extracts_cover_from_xhtml_svg_image_cover_page() {
 }
 
 fn epub_import_uses_first_image_spine_page_when_cover_metadata_is_missing() {
-    let nonce = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos();
-    let root = std::env::temp_dir().join(format!(
-        "flow-reader-epub-first-image-cover-test-{}-{nonce}",
-        std::process::id()
-    ));
+    let root = temp_root("flow-reader-epub-first-image-cover-test");
     let source = root.join("first-image-page.epub");
     let cover_bytes = b"first-image-cover-bytes";
     write_minimal_epub_with_first_image_spine_page(&source, cover_bytes);
@@ -2244,11 +2148,7 @@ fn epub_import_extracts_covers_across_supported_package_variants() {
 
 #[test]
 fn epub_import_command_returns_successes_when_later_source_fails() {
-    let nonce = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos();
-    let root = std::env::temp_dir().join(format!(
-        "flow-reader-epub-partial-import-test-{}-{nonce}",
-        std::process::id()
-    ));
+    let root = temp_root("flow-reader-epub-partial-import-test");
     let source = root.join("valid.epub");
     let broken = root.join("broken.epub");
     write_minimal_epub_file(&source, "Valid Book", "valid body");
@@ -2280,11 +2180,7 @@ fn epub_import_command_returns_successes_when_later_source_fails() {
 
 #[test]
 fn epub_import_resolves_content_and_path_identity_without_losing_local_changes() {
-    let nonce = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos();
-    let root = std::env::temp_dir().join(format!(
-        "flow-reader-epub-replace-cleanup-test-{}-{nonce}",
-        std::process::id()
-    ));
+    let root = temp_root("flow-reader-epub-replace-cleanup-test");
     let source_dir = root.join("first");
     let source = source_dir.join("replace.epub");
     write_minimal_epub_file(&source, "Old Book", "old body");
@@ -2403,11 +2299,7 @@ fn import_identity_uses_export_hash_only_for_current_managed_content() {
 
 #[test]
 fn unpack_package_reuses_in_flight_task_for_same_book_revision() {
-    let nonce = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos();
-    let root = std::env::temp_dir().join(format!(
-        "flow-reader-unpack-idempotent-test-{}-{nonce}",
-        std::process::id()
-    ));
+    let root = temp_root("flow-reader-unpack-idempotent-test");
     let storage = Arc::new(test_storage_with_book(&root, test_library_book(BookSourceFormat::Epub)));
     fs::create_dir_all(storage.book_dir("book")).unwrap();
     fs::write(storage.book_dir("book").join(BOOK_FILE), b"placeholder").unwrap();
@@ -2498,8 +2390,7 @@ fn stale_materialization_requests_do_not_recreate_book_content() {
 
 #[test]
 fn stale_unpack_result_is_not_published() {
-    let nonce = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos();
-    let root = std::env::temp_dir().join(format!("flow-reader-unpack-stale-test-{}-{nonce}", std::process::id()));
+    let root = temp_root("flow-reader-unpack-stale-test");
     let storage = test_storage_with_book(&root, test_library_book(BookSourceFormat::Epub));
     fs::create_dir_all(storage.book_dir("book")).unwrap();
     fs::write(storage.book_dir("book").join(BOOK_FILE), b"placeholder").unwrap();
@@ -2522,8 +2413,7 @@ fn stale_unpack_result_is_not_published() {
 
 #[test]
 fn failed_unpack_does_not_expose_partial_directory() {
-    let nonce = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos();
-    let root = std::env::temp_dir().join(format!("flow-reader-unpack-atomic-test-{}-{nonce}", std::process::id()));
+    let root = temp_root("flow-reader-unpack-atomic-test");
     let storage = test_storage_with_book(&root, test_library_book(BookSourceFormat::Epub));
     fs::create_dir_all(storage.book_dir("book")).unwrap();
     fs::write(storage.book_dir("book").join(BOOK_FILE), b"placeholder").unwrap();
@@ -2544,11 +2434,7 @@ fn failed_unpack_does_not_expose_partial_directory() {
 
 #[test]
 fn archive_only_epub_reader_source_exposes_package_resources_without_unpacking() {
-    let nonce = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos();
-    let root = std::env::temp_dir().join(format!(
-        "flow-reader-archive-reader-source-test-{}-{nonce}",
-        std::process::id()
-    ));
+    let root = temp_root("flow-reader-archive-reader-source-test");
     let storage = test_storage_with_book(&root, test_library_book(BookSourceFormat::Epub));
     let book_dir = storage.book_dir("book");
     let book_path = book_dir.join(BOOK_FILE);
@@ -2582,11 +2468,7 @@ fn archive_only_epub_reader_source_exposes_package_resources_without_unpacking()
 
 #[test]
 fn archive_only_epub_search_reads_sections_from_package() {
-    let nonce = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos();
-    let root = std::env::temp_dir().join(format!(
-        "flow-reader-archive-search-test-{}-{nonce}",
-        std::process::id()
-    ));
+    let root = temp_root("flow-reader-archive-search-test");
     let storage = test_storage_with_book(&root, test_library_book(BookSourceFormat::Epub));
     let book_dir = storage.book_dir("book");
     write_minimal_epub_with_invalid_windows_entry(&book_dir.join(BOOK_FILE));
@@ -2617,11 +2499,7 @@ fn archive_only_epub_search_reads_sections_from_package() {
 
 #[test]
 fn archive_only_epub_text_replacement_is_not_supported() {
-    let nonce = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos();
-    let root = std::env::temp_dir().join(format!(
-        "flow-reader-archive-replace-test-{}-{nonce}",
-        std::process::id()
-    ));
+    let root = temp_root("flow-reader-archive-replace-test");
     let mut book = test_library_book(BookSourceFormat::Epub);
     book.content_mode = BookContentMode::ArchiveOnly;
     let storage = test_storage_with_book(&root, book);
@@ -2653,11 +2531,7 @@ fn archive_only_epub_text_replacement_is_not_supported() {
 
 #[test]
 fn archive_only_epub_export_copies_original_package_without_unpacking() {
-    let nonce = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos();
-    let root = std::env::temp_dir().join(format!(
-        "flow-reader-archive-export-test-{}-{nonce}",
-        std::process::id()
-    ));
+    let root = temp_root("flow-reader-archive-export-test");
     let mut book = test_library_book(BookSourceFormat::Epub);
     book.content_mode = BookContentMode::ArchiveOnly;
     let storage = test_storage_with_book(&root, book);
@@ -2681,8 +2555,7 @@ fn archive_only_epub_export_copies_original_package_without_unpacking() {
 
 #[test]
 fn failed_flush_keeps_library_dirty_for_retry() {
-    let nonce = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos();
-    let root = std::env::temp_dir().join(format!("flow-reader-flush-retry-test-{}-{nonce}", std::process::id()));
+    let root = temp_root("flow-reader-flush-retry-test");
     let storage = test_storage_with_books(&root, vec![test_library_book(BookSourceFormat::Epub)]);
     let path = library_path(&root).unwrap();
     fs::create_dir_all(&path).unwrap();
@@ -2832,11 +2705,7 @@ fn partial_checkpoint_failure_keeps_committed_summaries_dirty() {
 
 #[test]
 fn book_state_checkpoint_flushes_the_unified_book_aggregate() {
-    let nonce = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos();
-    let root = std::env::temp_dir().join(format!(
-        "flow-reader-book-checkpoint-scope-test-{}-{nonce}",
-        std::process::id()
-    ));
+    let root = temp_root("flow-reader-book-checkpoint-scope-test");
     let mut library_book = test_library_book_with_id("library-book", BookSourceFormat::Epub);
     library_book.created_at = 100;
     library_book.content_edited_at = Some(150);
@@ -3089,8 +2958,7 @@ fn preserves_numeric_character_references_in_generated_text_xhtml() {
 
 #[test]
 fn txt_entity_edits_preserve_source_positions_and_rendered_text() {
-    let nonce = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos();
-    let root = std::env::temp_dir().join(format!("flow-entity-edit-{}-{nonce}", std::process::id()));
+    let root = temp_root("flow-entity-edit");
     let text_dir = root.join("Text");
     fs::create_dir_all(&text_dir).unwrap();
     let source_path = root.join("source.txt");
@@ -3350,11 +3218,7 @@ fn persists_search_text_cache_as_zstd_payload() {
 
 #[test]
 fn writes_image_index_cache_only_for_current_book_revision() {
-    let nonce = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos();
-    let root = std::env::temp_dir().join(format!(
-        "flow-reader-image-index-cache-test-{}-{nonce}",
-        std::process::id()
-    ));
+    let root = temp_root("flow-reader-image-index-cache-test");
     let book = test_library_book_with_id("book", BookSourceFormat::Epub);
     let storage = test_storage_with_book(&root, book.clone());
     fs::create_dir_all(storage.book_dir(&book.id)).unwrap();
@@ -3672,8 +3536,7 @@ fn uses_cached_nav_path_for_search_result_group() {
 
 #[test]
 fn reads_search_text_sections_from_unpacked_spine_order() {
-    let nonce = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos();
-    let root = std::env::temp_dir().join(format!("flow-reader-search-cache-test-{}-{nonce}", std::process::id()));
+    let root = temp_root("flow-reader-search-cache-test");
     let meta_inf = root.join("META-INF");
     let oebps = root.join("OEBPS");
     let text_dir = oebps.join("Text");
@@ -3733,8 +3596,7 @@ fn reads_search_text_sections_from_unpacked_spine_order() {
 
 #[test]
 fn reads_epub3_nav_titles_and_parent_paths_for_search_sections() {
-    let nonce = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos();
-    let root = std::env::temp_dir().join(format!("flow-reader-search-nav-test-{}-{nonce}", std::process::id()));
+    let root = temp_root("flow-reader-search-nav-test");
     let meta_inf = root.join("META-INF");
     let oebps = root.join("OEBPS");
     let text_dir = oebps.join("Text");
@@ -3804,8 +3666,7 @@ fn reads_epub3_nav_titles_and_parent_paths_for_search_sections() {
 
 #[test]
 fn reads_ncx_titles_for_search_sections() {
-    let nonce = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos();
-    let root = std::env::temp_dir().join(format!("flow-reader-search-ncx-test-{}-{nonce}", std::process::id()));
+    let root = temp_root("flow-reader-search-ncx-test");
     let meta_inf = root.join("META-INF");
     let oebps = root.join("OEBPS");
     let text_dir = oebps.join("Text");
@@ -3889,11 +3750,7 @@ fn replaces_selected_xhtml_text_node_by_dom_index() {
 
 #[test]
 fn epub_replacement_updates_unique_xhtml_heading_without_updating_navigation() {
-    let nonce = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos();
-    let root = std::env::temp_dir().join(format!(
-        "flow-reader-epub-heading-replace-test-{}-{nonce}",
-        std::process::id()
-    ));
+    let root = temp_root("flow-reader-epub-heading-replace-test");
     let storage = test_storage_with_book(&root, test_library_book(BookSourceFormat::Epub));
     let book_dir = storage.book_dir("book");
     let unpacked = book_dir.join(UNPACKED_DIR);
@@ -3980,11 +3837,7 @@ fn txt_xhtml_replacement_does_not_fall_back_to_rendered_text_node_index() {
 
 #[test]
 fn txt_replacement_uses_paragraph_index_when_rendered_text_node_index_is_stale() {
-    let nonce = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos();
-    let root = std::env::temp_dir().join(format!(
-        "flow-reader-txt-paragraph-replace-test-{}-{nonce}",
-        std::process::id()
-    ));
+    let root = temp_root("flow-reader-txt-paragraph-replace-test");
     let mut book = test_library_book(BookSourceFormat::Txt);
     book.metadata = json!({ "sourceEncodingId": "utf-8" });
     let storage = test_storage_with_book(&root, book);
@@ -4046,11 +3899,7 @@ fn txt_replacement_uses_paragraph_index_when_rendered_text_node_index_is_stale()
 
 #[test]
 fn txt_replacement_fails_fast_without_paragraph_index() {
-    let nonce = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos();
-    let root = std::env::temp_dir().join(format!(
-        "flow-reader-txt-missing-paragraph-index-test-{}-{nonce}",
-        std::process::id()
-    ));
+    let root = temp_root("flow-reader-txt-missing-paragraph-index-test");
     let mut book = test_library_book(BookSourceFormat::Txt);
     book.metadata = json!({ "sourceEncodingId": "utf-8" });
     let storage = test_storage_with_book(&root, book);
@@ -4119,11 +3968,7 @@ fn txt_replacement_fails_fast_without_paragraph_index() {
 
 #[test]
 fn txt_replacement_streams_to_target_heading_when_previous_generated_heading_has_parent() {
-    let nonce = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos();
-    let root = std::env::temp_dir().join(format!(
-        "flow-reader-txt-stream-heading-test-{}-{nonce}",
-        std::process::id()
-    ));
+    let root = temp_root("flow-reader-txt-stream-heading-test");
     let mut book = test_library_book(BookSourceFormat::Txt);
     book.metadata = json!({ "sourceEncodingId": "utf-8" });
     let storage = test_storage_with_book(&root, book);
@@ -4464,11 +4309,7 @@ fn failed_text_edit_restores_content_and_revision_before_retry() {
 
 #[test]
 fn txt_replacement_updates_generated_heading_and_source_title_line() {
-    let nonce = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos();
-    let root = std::env::temp_dir().join(format!(
-        "flow-reader-txt-heading-replace-test-{}-{nonce}",
-        std::process::id()
-    ));
+    let root = temp_root("flow-reader-txt-heading-replace-test");
     let mut book = test_library_book(BookSourceFormat::Txt);
     book.metadata = json!({ "sourceEncodingId": "utf-8" });
     let storage = test_storage_with_book(&root, book);
@@ -4533,11 +4374,7 @@ fn txt_replacement_updates_generated_heading_and_source_title_line() {
 
 #[test]
 fn txt_replacement_updates_generated_volume_heading_and_source_title_line() {
-    let nonce = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos();
-    let root = std::env::temp_dir().join(format!(
-        "flow-reader-txt-volume-heading-replace-test-{}-{nonce}",
-        std::process::id()
-    ));
+    let root = temp_root("flow-reader-txt-volume-heading-replace-test");
     let mut book = test_library_book(BookSourceFormat::Txt);
     book.metadata = json!({ "sourceEncodingId": "utf-8" });
     let storage = test_storage_with_book(&root, book);
@@ -4626,8 +4463,7 @@ fn writes_splice_txt_source_update_without_losing_tail() {
 
 #[test]
 fn book_exports_replace_only_the_destination_and_preserve_files_on_failure() {
-    let nonce = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos();
-    let root = std::env::temp_dir().join(format!("flow-reader-export-safety-{}-{nonce}", std::process::id()));
+    let root = temp_root("flow-reader-export-safety");
     for kind in ["txt", "epub-copy", "epub-rebuild", "epub-reuse"] {
         let case = root.join(kind);
         let format = if kind == "txt" {
@@ -4717,8 +4553,7 @@ fn book_exports_replace_only_the_destination_and_preserve_files_on_failure() {
 
 #[test]
 fn exports_epub_with_required_mimetype_entry() {
-    let nonce = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos();
-    let root = std::env::temp_dir().join(format!("flow-reader-export-test-{}-{nonce}", std::process::id()));
+    let root = temp_root("flow-reader-export-test");
     let output = root.with_extension("epub");
     fs::create_dir_all(root.join("META-INF")).unwrap();
     fs::create_dir_all(root.join("OEBPS")).unwrap();
@@ -4747,11 +4582,7 @@ fn exports_epub_with_required_mimetype_entry() {
 
 #[test]
 fn exports_epub_compresses_text_and_stores_already_compressed_assets() {
-    let nonce = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos();
-    let root = std::env::temp_dir().join(format!(
-        "flow-reader-export-compression-test-{}-{nonce}",
-        std::process::id()
-    ));
+    let root = temp_root("flow-reader-export-compression-test");
     let output = root.with_extension("epub");
     fs::create_dir_all(root.join("OEBPS")).unwrap();
     fs::create_dir_all(root.join("OEBPS/images")).unwrap();
@@ -4774,11 +4605,7 @@ fn exports_epub_compresses_text_and_stores_already_compressed_assets() {
 
 #[test]
 fn exports_epub_reuses_original_entries_and_rewrites_changed_files() {
-    let nonce = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos();
-    let root = std::env::temp_dir().join(format!(
-        "flow-reader-export-raw-copy-test-{}-{nonce}",
-        std::process::id()
-    ));
+    let root = temp_root("flow-reader-export-raw-copy-test");
     let original = root.join("original.epub");
     let unpacked = root.join("unpacked");
     let output = root.join("exported.epub");
@@ -4942,11 +4769,7 @@ fn reused_epub_entries_preserve_legacy_names_and_non_ascii_comments() {
 
 #[test]
 fn exports_epub_from_unpacked_when_file_count_changes() {
-    let nonce = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos();
-    let root = std::env::temp_dir().join(format!(
-        "flow-reader-export-unpacked-count-test-{}-{nonce}",
-        std::process::id()
-    ));
+    let root = temp_root("flow-reader-export-unpacked-count-test");
     let original = root.join("original.epub");
     let unpacked = root.join("unpacked");
     let output = root.join("exported.epub");
@@ -4988,11 +4811,7 @@ fn exports_epub_from_unpacked_when_file_count_changes() {
 
 #[test]
 fn normalizes_large_ncx_anchored_spine_section() {
-    let nonce = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos();
-    let root = std::env::temp_dir().join(format!(
-        "flow-reader-epub-normalize-test-{}-{nonce}",
-        std::process::id()
-    ));
+    let root = temp_root("flow-reader-epub-normalize-test");
     fs::create_dir_all(root.join("META-INF")).unwrap();
     fs::create_dir_all(root.join("OEBPS")).unwrap();
     fs::write(root.join("mimetype"), "application/epub+zip").unwrap();
@@ -5130,11 +4949,7 @@ fn assert_minified_large_ncx_anchored_spine_section_normalizes(
     last_ncx_src: &str,
     first_split_path: &str,
 ) {
-    let nonce = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos();
-    let root = std::env::temp_dir().join(format!(
-        "flow-reader-epub-minified-normalize-test-{}-{nonce}",
-        std::process::id()
-    ));
+    let root = temp_root("flow-reader-epub-minified-normalize-test");
     let opf_dir = opf_dir_segments
         .iter()
         .fold(root.clone(), |path, segment| path.join(segment));

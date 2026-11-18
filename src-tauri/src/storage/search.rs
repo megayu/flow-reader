@@ -2050,13 +2050,9 @@ fn image_cache_estimated_bytes(cache: &ImageIndexCache) -> usize {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::storage::temp_root;
     use serde_json::json;
-    use std::{
-        path::Path,
-        sync::Arc,
-        thread,
-        time::{Duration, SystemTime, UNIX_EPOCH},
-    };
+    use std::{path::Path, sync::Arc, thread, time::Duration};
 
     #[test]
     fn search_cache_matches_literal_text_contract() {
@@ -2117,11 +2113,6 @@ mod tests {
         drop(old);
         requests.cancel("old").unwrap();
         assert!(!current.cancelled());
-    }
-
-    fn temp_root(label: &str) -> PathBuf {
-        let nonce = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos();
-        std::env::temp_dir().join(format!("flow-reader-{label}-{}-{nonce}", std::process::id()))
     }
 
     fn test_book(id: &str, revision: u32) -> StoredBook {
@@ -2231,7 +2222,7 @@ mod tests {
 
     #[test]
     fn unpacked_search_rejects_percent_encoded_parent_paths() {
-        let root = temp_root("search-path-boundary-test");
+        let root = temp_root("flow-reader-search-path-boundary-test");
         let unpacked = root.join("unpacked");
         fs::create_dir_all(unpacked.join("META-INF")).unwrap();
         fs::write(
@@ -2254,7 +2245,7 @@ mod tests {
 
     #[test]
     fn search_index_reuses_in_flight_build_for_same_book_revision() {
-        let root = temp_root("search-idempotent-test");
+        let root = temp_root("flow-reader-search-idempotent-test");
         let storage = Arc::new(test_storage(&root, vec![test_book("book", 1)]));
         let tasks = Arc::new(TaskService::default());
         let mut book = storage.stored_book("book").unwrap();
@@ -2298,7 +2289,7 @@ mod tests {
 
     #[test]
     fn stale_search_index_result_is_not_written() {
-        let root = temp_root("search-stale-publish-test");
+        let root = temp_root("flow-reader-search-stale-publish-test");
         let storage = test_storage(&root, vec![test_book("book", 1)]);
         let book = storage.stored_book("book").unwrap();
         let cache = test_cache(&book, "old content");
@@ -2360,7 +2351,7 @@ mod tests {
 
     #[test]
     fn search_memory_cache_is_bounded_by_book_count() {
-        let root = temp_root("search-memory-bound-test");
+        let root = temp_root("flow-reader-search-memory-bound-test");
         let books = (0..=DERIVED_CACHE_BOOK_LIMIT)
             .map(|index| test_book(&format!("book-{index}"), 1))
             .collect::<Vec<_>>();

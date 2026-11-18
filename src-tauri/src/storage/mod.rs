@@ -784,4 +784,10 @@ fn mark_book_exported(book: &mut StoredBook, revision: u32, hash: Option<String>
 }
 
 #[cfg(test)]
+fn temp_root(label: &str) -> PathBuf {
+    let nonce = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos();
+    std::env::temp_dir().join(format!("{label}-{}-{nonce}", std::process::id()))
+}
+
+#[cfg(test)]
 mod tests;
