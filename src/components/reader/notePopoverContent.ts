@@ -1,5 +1,5 @@
 import { isSupportedExternalUrl } from '../../externalLink'
-import { hasNoteContainerSemantics, hasToken, isNoteMarkerText } from '../../noteSemantics'
+import { hasNoteContainerSemantics, isNoteBacklink, isNoteMarkerText } from '../../noteSemantics'
 
 const blockedElements = 'base, embed, iframe, link, meta, object, script, style'
 const blockedAttributes = new Set([
@@ -38,7 +38,7 @@ export function cloneNoteElement(
   // backlinks use the note destination, independent of the clicked reference.
   const returnHrefs = new Set(
     links
-      .filter((link, index) => (index === 0 && isLeadingNoteLink(clone, link)) || isDeclaredBacklink(link))
+      .filter((link, index) => (index === 0 && isLeadingNoteLink(clone, link)) || isNoteBacklink(link))
       .map((link) => link.getAttribute('href')?.trim())
       .filter((href): href is string => !!href && href.includes('#')),
   )
@@ -57,7 +57,7 @@ export function cloneNoteElement(
       const href = link.getAttribute('href')?.trim()
       let destination: string | undefined
       if (href && isSupportedExternalUrl(href)) destination = href
-      else if (isDeclaredBacklink(link) || (href && returnHrefs.has(href))) {
+      else if (isNoteBacklink(link) || (href && returnHrefs.has(href))) {
         // Open the original endnote when visible; leave backlinks disabled when hidden.
         destination = noteTarget
       } else {
@@ -208,11 +208,4 @@ function isInlineNoteMarker(el: HTMLElement) {
 function isTagName(el: Element, ...names: string[]) {
   const tagName = el.tagName.toUpperCase()
   return names.some((name) => tagName === name)
-}
-
-function isDeclaredBacklink(link: HTMLAnchorElement) {
-  return (
-    hasToken(link.getAttribute('role'), 'doc-backlink', 'backlink') ||
-    hasToken(link.getAttribute('epub:type') ?? link.getAttribute('type'), 'doc-backlink', 'backlink')
-  )
 }
