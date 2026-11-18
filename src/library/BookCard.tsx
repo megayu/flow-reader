@@ -628,7 +628,7 @@ const BookCardComponent: React.FC<BookCardProps> = ({
 
               void reader
                 .closeBookTab(book.id)
-                .then(() => db.books.delete(book.id))
+                .then(() => db.books.bulkDelete([book.id]))
                 .catch((error) => notifyError(error, 'home.context.delete'))
             }}
           />

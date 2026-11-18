@@ -476,9 +476,6 @@ export const db = {
       invalidatePins()
       notify('books', 'covers', 'pins')
     },
-    async delete(id: string) {
-      await this.bulkDelete([id])
-    },
     async updateReadingStatus(ids: string[], readingStatus: ReadingStatus | null) {
       beginBooksMutation()
       const updatedAt = Date.now()
@@ -534,9 +531,6 @@ export const db = {
         notify('tags')
         return tag ?? undefined
       })
-    },
-    async delete(id: string) {
-      await this.deleteMany([id])
     },
     deleteMany(ids: string[]) {
       return runTagMutation(async () => {

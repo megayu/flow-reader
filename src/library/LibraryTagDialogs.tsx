@@ -113,7 +113,7 @@ export function DeleteLibraryTagDialog({ onClose, onDeleted, tag }: DeleteLibrar
       onClose={onClose}
       onConfirm={() => {
         void db.tags
-          .delete(tag.id)
+          .deleteMany([tag.id])
           .then(onDeleted)
           .catch((error) => notifyError(error, 'home.library_filter.delete_tag'))
       }}
