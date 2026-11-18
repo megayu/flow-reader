@@ -21,10 +21,6 @@ export function readingStatusMessageKey(status: ReadingStatus) {
   return readingStatusMessageKeys[status]
 }
 
-export function toggleReadingStatusFilter(filters: ReadingStatus[], status: ReadingStatus) {
-  return filters.includes(status) ? filters.filter((item) => item !== status) : [...filters, status]
-}
-
 export function formatFileSize(bytes: number) {
   if (!Number.isFinite(bytes) || bytes <= 0) return ''
 

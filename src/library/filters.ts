@@ -122,12 +122,8 @@ export function pruneLibraryTagFilters(tagFilters: string[], tagOptions: Library
   return uniqueStringValues(tagFilters).filter((tagId) => availableTags.has(tagId))
 }
 
-export function toggleLibraryAuthorFilter(authorFilters: string[], author: string) {
-  return authorFilters.includes(author) ? authorFilters.filter((item) => item !== author) : [...authorFilters, author]
-}
-
-export function toggleLibraryTagFilter(tagFilters: string[], tagId: string) {
-  return tagFilters.includes(tagId) ? tagFilters.filter((item) => item !== tagId) : [...tagFilters, tagId]
+export function toggleFilterValue<T extends string>(filters: readonly T[], value: NoInfer<T>): T[] {
+  return filters.includes(value) ? filters.filter((item) => item !== value) : [...filters, value]
 }
 
 export function areStringListsEqual(a: string[], b: string[]) {

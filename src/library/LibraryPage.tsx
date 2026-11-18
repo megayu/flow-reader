@@ -109,16 +109,10 @@ import {
   suspendCoverResourceCache,
 } from './coverResourceCache'
 import { FolderImportDialog } from './FolderImportDialog'
-import { filterBooksByLibraryFilters } from './filters'
+import { filterBooksByLibraryFilters, toggleFilterValue } from './filters'
 import { DeleteSelectedBooksDialog, TagsDialog } from './LibraryDialogs'
 import { libraryGridVirtualizationThreshold } from './libraryGridWindow'
-import {
-  bookSourceDescriptionKey,
-  bookSourceStatusFromError,
-  readingStatusOptions,
-  sortBooks,
-  toggleReadingStatusFilter,
-} from './model'
+import { bookSourceDescriptionKey, bookSourceStatusFromError, readingStatusOptions, sortBooks } from './model'
 import { ReadingStatusMenuContent } from './ReadingStatusControls'
 import {
   getBookIdRange,
@@ -1238,7 +1232,7 @@ const Library: React.FC<LibraryProps> = ({
       if (status) {
         e.preventDefault()
         e.stopPropagation()
-        setStatusFilters((filters) => toggleReadingStatusFilter(filters, status))
+        setStatusFilters((filters) => toggleFilterValue(filters, status))
       }
     }
 

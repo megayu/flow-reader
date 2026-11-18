@@ -52,8 +52,7 @@ import {
   getLibraryTagOptions,
   pruneLibraryAuthorFilters,
   pruneLibraryTagFilters,
-  toggleLibraryAuthorFilter,
-  toggleLibraryTagFilter,
+  toggleFilterValue,
 } from '../library/filters'
 import { LibraryFilterChip, type LibraryFilterMenuItem } from '../library/LibraryFilterChip'
 import {
@@ -682,9 +681,7 @@ function LibraryFilterView({ className }: ComponentProps<'div'>) {
   const hasFilters = statusFilters.length > 0 || authorFilters.length > 0 || tagFilters.length > 0
 
   const toggle = (status: (typeof libraryStatusOptions)[number]) => {
-    setStatusFilters((current) =>
-      current.includes(status) ? current.filter((item) => item !== status) : [...current, status],
-    )
+    setStatusFilters((current) => toggleFilterValue(current, status))
   }
 
   const clearFilters = useCallback(() => {
@@ -783,14 +780,14 @@ function LibraryFilterView({ className }: ComponentProps<'div'>) {
 
   const toggleAuthor = useCallback(
     (author: string) => {
-      setAuthorFilters((current) => toggleLibraryAuthorFilter(current, author))
+      setAuthorFilters((current) => toggleFilterValue(current, author))
     },
     [setAuthorFilters],
   )
 
   const toggleTag = useCallback(
     (tagId: string) => {
-      setTagFilters((current) => toggleLibraryTagFilter(current, tagId))
+      setTagFilters((current) => toggleFilterValue(current, tagId))
     },
     [setTagFilters],
   )
