@@ -36,3 +36,38 @@ test('repairs the cached reading summary without replacing newer local progress'
   assert.equal(db.books.peek(previous.id)?.cfi, 'current-position')
   assert.equal(db.books.peek(previous.id)?.lastReadAt, 300)
 })
+
+test('publishes book metadata only after save and preserves reading progress recorded in flight', async () => {
+  vi.resetModules()
+  const { db } = await import('../../src/storage/client')
+  const book = createTestBook()
+  const metadata = { ...book.metadata, title: 'Revised title', creator: 'New author' }
+  native.invokeStorage.mockResolvedValueOnce([book])
+  const before = await db.books.toArray()
+  const snapshots: (BookRecord[] | undefined)[] = []
+  const unsubscribe = db.subscribe('books', () => snapshots.push(db.books.peekAll()))
+
+  try {
+    native.invokeStorage.mockRejectedValueOnce(new Error('Save failed'))
+    await assert.rejects(db.books.update(book.id, { metadata }), /Save failed/)
+    assert.deepEqual(before[0]?.metadata, book.metadata)
+    assert.deepEqual(snapshots, [])
+
+    const pending = Promise.withResolvers<null>()
+    native.invokeStorage.mockReturnValueOnce(pending.promise)
+    const save = db.books.update(book.id, { metadata })
+    assert.deepEqual(db.books.peek(book.id)?.metadata, book.metadata)
+    const progress = { cfi: 'new-position', percentage: 0.75, updatedAt: Date.now() + 10_000 }
+    db.books.updateCachedFields(book.id, progress)
+    pending.resolve(null)
+    await save
+
+    const after = await db.books.toArray()
+    assert.notEqual(after, before)
+    assert.deepEqual(snapshots, [after])
+    assert.deepEqual(before[0]?.metadata, book.metadata)
+    assert.deepEqual(after[0], { ...before[0], ...progress, metadata })
+  } finally {
+    unsubscribe()
+  }
+})

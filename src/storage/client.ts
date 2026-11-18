@@ -424,11 +424,7 @@ export const db = {
     },
     async update(id: string, changes: Pick<BookRecord, 'metadata'>) {
       beginBooksMutation()
-      const cached = booksCache?.find((book) => book.id === id)
       const committedChanges = { ...changes, updatedAt: Date.now() }
-      if (cached) {
-        updateCachedBook(id, committedChanges)
-      }
 
       const updatedCover = await trackNativeWrite(
         invoke('update_book', {
@@ -437,6 +433,16 @@ export const db = {
         }),
       )
 
+      if (booksCache) {
+        const cached = booksCache.find((book) => book.id === id)
+        if (cached) {
+          booksCache = upsertCachedById(booksCache, {
+            ...cached,
+            metadata: committedChanges.metadata,
+            updatedAt: Math.max(cached.updatedAt ?? 0, committedChanges.updatedAt),
+          })
+        }
+      }
       if (updatedCover) rememberCover(updatedCover)
       invalidatePins()
       notify(...(['books', updatedCover ? 'covers' : undefined, 'pins'].filter(Boolean) as TableName[]))
