@@ -83,41 +83,23 @@ export default class SectionMeasurements {
       return this.pageCounts[key]
     }
 
-    let scrollLeft = manager.container ? manager.container.scrollLeft : 0
-    let view = manager.createView(section)
-    view.element.style.visibility = 'hidden'
-    view.iframe && (view.iframe.style.visibility = 'hidden')
-
-    view.on(EVENTS.VIEWS.AXIS, (axis) => {
-      manager.updateAxis(axis)
-    })
-
-    // Hidden page-count views can belong to horizontal front matter or a
-    // later vertical chapter. Their writing mode must not replace the mode
-    // owned by the currently displayed reader view.
-
-    manager.views.append(view)
-
-    try {
-      await view.display(manager.request)
-      return this.cacheView(view)
-    } catch (err) {
-      if (!isUnavailableSectionError(err)) {
-        throw err
-      }
-
-      section.resourceAvailable = false
-      console.warn('Skipping unavailable reflowable section', section.href, err)
-      return 0
-    } finally {
-      manager.views.remove(view)
-      if (!manager.destroyed) manager.scrollTo(scrollLeft, 0, true)
-    }
+    const pageCount = await this.withView(
+      section,
+      (view) => this.cacheView(view),
+      (error) => {
+        if (!isUnavailableSectionError(error)) throw error
+        section.resourceAvailable = false
+        console.warn('Skipping unavailable reflowable section', section.href, error)
+        return 0
+      },
+    )
+    return pageCount ?? 0
   }
 
   async withView<Result>(
     section: Section,
     callback: (view: IframeView) => Result,
+    onMeasurementError?: (error: unknown) => Awaited<Result>,
   ): Promise<Result | undefined> {
     const manager = this.manager
     if (!manager || manager.destroyed) return
@@ -135,14 +117,17 @@ export default class SectionMeasurements {
       manager.updateAxis(axis)
     })
 
-    // The temporary view keeps its own writing mode for measurement only.
-
+    // Measurement can cross writing modes. The visible view still owns the
+    // manager's writing mode, so listen only for axis changes here.
     manager.views.append(view)
 
     try {
       await view.display(manager.request)
       if (manager.destroyed) return
       return await callback(view)
+    } catch (error) {
+      if (!onMeasurementError) throw error
+      return onMeasurementError(error)
     } finally {
       manager.views.remove(view)
       if (!manager.destroyed) manager.scrollTo(scrollLeft, 0, true)
