@@ -157,27 +157,16 @@ const ReaderImagePreviewContent: React.FC<ReaderImagePreviewContentProps> = ({ b
     }))
   }, [])
 
+  const nextZoomIn = getNextImagePreviewZoomIn(displayScale)
+  const nextZoomOut = getNextImagePreviewZoomOut(displayScale)
+
   const zoomIn = useCallback(() => {
-    const next = getNextImagePreviewZoomIn(displayScale)
-    if (next === undefined) return
-    setPreviewState((current) => ({
-      ...current,
-      mode: 'zoom',
-      pan: { x: 0, y: 0 },
-      scale: next,
-    }))
-  }, [displayScale])
+    if (nextZoomIn !== undefined) zoomTo(nextZoomIn)
+  }, [nextZoomIn, zoomTo])
 
   const zoomOut = useCallback(() => {
-    const next = getNextImagePreviewZoomOut(displayScale)
-    if (next === undefined) return
-    setPreviewState((current) => ({
-      ...current,
-      mode: 'zoom',
-      pan: { x: 0, y: 0 },
-      scale: next,
-    }))
-  }, [displayScale])
+    if (nextZoomOut !== undefined) zoomTo(nextZoomOut)
+  }, [nextZoomOut, zoomTo])
 
   const resetToFit = useCallback(() => {
     setPreviewState((current) => ({
@@ -367,8 +356,8 @@ const ReaderImagePreviewContent: React.FC<ReaderImagePreviewContentProps> = ({ b
   }, [])
 
   const zoomPercent = `${Math.round(displayScale * 100)}%`
-  const canZoomOut = getNextImagePreviewZoomOut(displayScale) !== undefined && displayScale > IMAGE_PREVIEW_MIN_STEP
-  const canZoomIn = getNextImagePreviewZoomIn(displayScale) !== undefined && displayScale < IMAGE_PREVIEW_MAX_STEP
+  const canZoomOut = nextZoomOut !== undefined
+  const canZoomIn = nextZoomIn !== undefined
   const isOneToOne = Math.abs(displayScale - 1) < 0.001
   const isFit = mode === 'fit'
 
