@@ -157,33 +157,15 @@ fn search_text_cache_matches_book(cache: &SearchTextCache, book: &StoredBook) ->
 }
 
 fn write_search_text_cache_if_current(storage: &AppStorage, id: &str, cache: &SearchTextCache) -> Result<bool, String> {
-    let current_book = storage.stored_book(id)?;
-    if current_book.scope == BookScope::External || !search_text_cache_matches_book(cache, &current_book) {
-        return Ok(false);
-    }
-
     let path = storage.search_text_cache_path(id, cache.source_revision, cache.revision);
-    if let Some(parent) = path.parent() {
-        fs::create_dir_all(parent).map_err(|error| error.to_string())?;
-    }
-
-    let bytes = encode_compressed_json(cache)?;
-    let tmp = path.with_extension("tmp");
-    fs::write(&tmp, bytes).map_err(|error| error.to_string())?;
-
-    let current_book = storage.stored_book(id)?;
-    if !search_text_cache_matches_book(cache, &current_book) {
-        let _ = fs::remove_file(&tmp);
-        return Ok(false);
-    }
-
-    fs::rename(&tmp, &path).map_err(|error| error.to_string())?;
-    if let Err(error) =
-        deletion::remove_obsolete_schema_caches(storage, id, "search-text.v", SEARCH_TEXT_CACHE_VERSION, true)
+    let published = storage.publish_derived_cache_if_current(id, &path, cache, search_text_cache_matches_book)?;
+    if published
+        && let Err(error) =
+            deletion::remove_obsolete_schema_caches(storage, id, "search-text.v", SEARCH_TEXT_CACHE_VERSION, true)
     {
         eprintln!("Failed to remove obsolete search text caches for book '{id}': {error}");
     }
-    Ok(true)
+    Ok(published)
 }
 
 fn store_search_text_memory_cache(
@@ -280,30 +262,15 @@ pub(super) fn write_image_index_cache_if_current(
     id: &str,
     cache: &ImageIndexCache,
 ) -> Result<bool, String> {
-    let current_book = storage.stored_book(id)?;
-    if current_book.scope == BookScope::External || !image_index_cache_matches_book(cache, &current_book) {
-        return Ok(false);
-    }
-
     let path = storage.image_index_cache_path(id, cache.source_revision, cache.revision);
-    if let Some(parent) = path.parent() {
-        fs::create_dir_all(parent).map_err(|error| error.to_string())?;
-    }
-    let bytes = encode_compressed_json(cache)?;
-    let tmp = path.with_extension("tmp");
-    fs::write(&tmp, bytes).map_err(|error| error.to_string())?;
-    let current_book = storage.stored_book(id)?;
-    if !image_index_cache_matches_book(cache, &current_book) {
-        let _ = fs::remove_file(&tmp);
-        return Ok(false);
-    }
-    fs::rename(&tmp, &path).map_err(|error| error.to_string())?;
-    if let Err(error) =
-        deletion::remove_obsolete_schema_caches(storage, id, "image-index.v", IMAGE_INDEX_CACHE_VERSION, true)
+    let published = storage.publish_derived_cache_if_current(id, &path, cache, image_index_cache_matches_book)?;
+    if published
+        && let Err(error) =
+            deletion::remove_obsolete_schema_caches(storage, id, "image-index.v", IMAGE_INDEX_CACHE_VERSION, true)
     {
         eprintln!("Failed to remove obsolete image index caches for book '{id}': {error}");
     }
-    Ok(true)
+    Ok(published)
 }
 
 fn load_image_index_memory_cache(
@@ -1778,6 +1745,36 @@ impl AppStorage {
             return Err(errors.join("; "));
         }
         Ok(())
+    }
+
+    fn publish_derived_cache_if_current<T: Serialize>(
+        &self,
+        id: &str,
+        path: &Path,
+        cache: &T,
+        matches_book: impl Fn(&T, &StoredBook) -> bool,
+    ) -> Result<bool, String> {
+        let book = self.stored_book(id)?;
+        if book.scope == BookScope::External || !matches_book(cache, &book) {
+            return Ok(false);
+        }
+
+        if let Some(parent) = path.parent() {
+            fs::create_dir_all(parent).map_err(|error| error.to_string())?;
+        }
+        let bytes = encode_compressed_json(cache)?;
+        let tmp = path.with_extension("tmp");
+        fs::write(&tmp, bytes).map_err(|error| error.to_string())?;
+
+        // The book may have changed while the temporary file was being written.
+        let book = self.stored_book(id)?;
+        if !matches_book(cache, &book) {
+            let _ = fs::remove_file(&tmp);
+            return Ok(false);
+        }
+
+        fs::rename(&tmp, path).map_err(|error| error.to_string())?;
+        Ok(true)
     }
 
     fn flush_derived_cache(&self, id: &str) -> Result<(), String> {
