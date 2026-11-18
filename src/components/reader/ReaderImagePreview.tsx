@@ -16,6 +16,7 @@ import { notifyExportedFile } from '@/exportNotification'
 import { formatErrorMessage } from '../../errorMessage'
 import { useTranslation } from '../../hooks/useTranslation'
 import { downloadReaderImage } from '../../readerImageDownload'
+import { Button } from '../ui/button'
 import { useNotify } from '../ui/notificationContext'
 
 const IMAGE_PREVIEW_ZOOM_STEPS = [0.5, 0.75, 1, 1.25, 1.5, 2, 3, 4, 5]
@@ -474,32 +475,23 @@ interface ReaderImagePreviewButtonProps extends ComponentProps<'button'> {
   label: string
 }
 
-export function ReaderImagePreviewButton({
-  active,
-  children,
-  className,
-  disabled,
-  label,
-  ...props
-}: ReaderImagePreviewButtonProps) {
+function ReaderImagePreviewButton({ active, className, label, ...props }: ReaderImagePreviewButtonProps) {
   return (
-    <button
+    <Button
       type="button"
+      variant="ghost"
+      size="icon-lg"
       aria-label={label}
       title={label}
-      disabled={disabled}
       className={clsx(
-        'flex size-9 items-center justify-center rounded-full border-0 bg-transparent text-white/85 transition-colors outline-none',
-        active && 'bg-white/18 text-white',
-        disabled
-          ? 'cursor-default text-white/35'
-          : 'cursor-pointer hover:bg-white/16 hover:text-white focus-visible:ring-2 focus-visible:ring-white/70 focus-visible:ring-offset-0',
+        'rounded-full border-0 bg-transparent text-white/85 transition-colors',
+        'hover:bg-transparent hover:text-white/85 enabled:hover:bg-white/16 enabled:hover:text-white',
+        'active:enabled:not-aria-[haspopup]:translate-none disabled:cursor-default disabled:opacity-100',
+        active && 'bg-white/18 hover:bg-white/18',
         className,
       )}
       {...props}
-    >
-      {children}
-    </button>
+    />
   )
 }
 
