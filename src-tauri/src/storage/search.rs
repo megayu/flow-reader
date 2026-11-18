@@ -1429,15 +1429,16 @@ pub(super) fn search_text_in_cache_cancellable(
             return Vec::new();
         }
         let fold_started = diagnostics_enabled.then(Instant::now);
-        let (folded_text, original_char_offsets) = lowercase_with_original_char_offsets(&section.text);
+        let folded_text = section.text.to_lowercase();
         if let Some(fold_started) = fold_started {
             fold_elapsed += fold_started.elapsed();
         }
         let mut previous_folded_byte_offset = 0usize;
         let mut folded_char_offset = 0usize;
         let mut offsets = Vec::new();
+        let mut original_chars = section.text.char_indices();
         let mut original_byte_offset = 0;
-        let mut previous_original_char_offset = 0;
+        let mut folded_char_end = 0;
 
         for (folded_byte_offset, _) in folded_text.match_indices(&folded_keyword) {
             if cancelled() {
@@ -1448,23 +1449,16 @@ pub(super) fn search_text_in_cache_cancellable(
                 .chars()
                 .count();
             previous_folded_byte_offset = folded_byte_offset;
-            let char_offset = original_char_offsets
-                .as_ref()
-                .and_then(|offsets| offsets.get(folded_char_offset))
-                .copied()
-                .or_else(|| original_char_offsets.is_none().then_some(folded_char_offset))
-                .unwrap_or_else(|| section.text.chars().count());
+            // Every character in a lowercase expansion points to the same original byte offset.
+            while folded_char_end <= folded_char_offset {
+                let (byte_offset, ch) = original_chars.next().expect("match is within the lowercase text");
+                original_byte_offset = byte_offset;
+                folded_char_end += ch.to_lowercase().count();
+            }
             if let Some(locate_started) = locate_started {
                 locate_elapsed += locate_started.elapsed();
             }
 
-            // Advance through original UTF-8 text once, including lowercase expansions.
-            original_byte_offset += section.text[original_byte_offset..]
-                .chars()
-                .take(char_offset - previous_original_char_offset)
-                .map(char::len_utf8)
-                .sum::<usize>();
-            previous_original_char_offset = char_offset;
             offsets.push(original_byte_offset);
 
             total += 1;
@@ -1504,21 +1498,6 @@ pub(super) fn search_text_in_cache_cancellable(
     }
 
     if cancelled() { Vec::new() } else { results }
-}
-
-fn lowercase_with_original_char_offsets(text: &str) -> (String, Option<Vec<usize>>) {
-    let folded = text.to_lowercase();
-    if !text.chars().any(|ch| ch.to_lowercase().count() != 1) {
-        return (folded, None);
-    }
-
-    let original_char_offsets = text
-        .chars()
-        .enumerate()
-        .flat_map(|(original_char_offset, ch)| ch.to_lowercase().map(move |_| original_char_offset))
-        .collect();
-
-    (folded, Some(original_char_offsets))
 }
 
 pub(super) fn search_text_excerpt(text: &str, offset: usize, keyword_len: usize) -> String {
