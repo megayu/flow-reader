@@ -160,10 +160,6 @@ function isFullscreenShortcut(e: KeyboardEvent) {
   return !e.ctrlKey && !e.metaKey && !e.altKey && !e.shiftKey && (e.key.toLowerCase() === 'f' || e.code === 'KeyF')
 }
 
-function isAppShortcutTargetBlocked(e: KeyboardEvent) {
-  return isGlobalKeyboardShortcutBlocked(e)
-}
-
 interface IAction {
   name: string
   title: MessageKey
@@ -376,7 +372,7 @@ function useFullscreenAction() {
 
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
-      if (!isFullscreenShortcut(e) || isAppShortcutTargetBlocked(e)) return
+      if (!isFullscreenShortcut(e) || isGlobalKeyboardShortcutBlocked(e)) return
 
       e.preventDefault()
       e.stopPropagation()
@@ -875,7 +871,7 @@ function LibraryFilterView({ className }: ComponentProps<'div'>) {
     const searchTarget = getLibraryFacetSearchShortcutTarget(e)
     if (searchTarget) {
       const insideFacetSearch = e.target instanceof Element && e.target.closest('[data-library-facet-search]') !== null
-      if (isLibraryFilterShortcutBlocked(e) && !insideFacetSearch) return
+      if (isGlobalKeyboardShortcutBlocked(e) && !insideFacetSearch) return
 
       e.preventDefault()
       e.stopPropagation()
@@ -888,7 +884,7 @@ function LibraryFilterView({ className }: ComponentProps<'div'>) {
       libraryAction !== 'libraryFilter' ||
       e.key !== 'Escape' ||
       e.defaultPrevented ||
-      isLibraryFilterShortcutBlocked(e)
+      isGlobalKeyboardShortcutBlocked(e)
     )
       return
 
@@ -1142,10 +1138,6 @@ function LibraryFilterView({ className }: ComponentProps<'div'>) {
       )}
     </PaneView>
   )
-}
-
-function isLibraryFilterShortcutBlocked(e: KeyboardEvent) {
-  return isGlobalKeyboardShortcutBlocked(e)
 }
 
 function getLibraryFacetSearchShortcutTarget(e: KeyboardEvent): LibraryFacetSearchTarget | undefined {
