@@ -193,11 +193,7 @@ fn store_search_text_memory_cache(
     dirty: bool,
     persistent: bool,
 ) -> Result<(), String> {
-    let state = storage
-        .inner
-        .state
-        .lock()
-        .map_err(|_| "storage state lock poisoned".to_string())?;
+    let state = storage.lock_state()?;
     if !state
         .library
         .books
@@ -339,11 +335,7 @@ fn store_image_index_memory_cache(
     dirty: bool,
     persistent: bool,
 ) -> Result<(), String> {
-    let state = storage
-        .inner
-        .state
-        .lock()
-        .map_err(|_| "storage state lock poisoned".to_string())?;
+    let state = storage.lock_state()?;
     if !state
         .library
         .books
@@ -965,11 +957,7 @@ pub(super) fn get_or_compute_book_word_count(
 impl AppStorage {
     fn store_word_count_if_missing(&self, id: &str, source_revision: u32, word_count: u64) -> Result<u64, String> {
         let stored = {
-            let mut state = self
-                .inner
-                .state
-                .lock()
-                .map_err(|_| "storage state lock poisoned".to_string())?;
+            let mut state = self.lock_state()?;
             let book = state
                 .library
                 .books

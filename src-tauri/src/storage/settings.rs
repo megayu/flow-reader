@@ -56,11 +56,7 @@ fn text_import_rules_with_fallback(settings: &Value, fallback: TextImportRulesIn
 
 #[tauri::command]
 pub fn get_settings(storage: StorageAccess<'_, AppStorage>) -> Result<SettingsBootstrap, String> {
-    let state = storage
-        .inner
-        .state
-        .lock()
-        .map_err(|_| "storage state lock poisoned".to_string())?;
+    let state = storage.lock_state()?;
     Ok(SettingsBootstrap {
         settings: state.settings.clone(),
         text_import_rule_defaults: default_text_import_rules_input(),
@@ -74,11 +70,7 @@ pub fn update_settings(storage: StorageAccess<'_, AppStorage>, settings: Value, 
 
 pub(super) fn update_settings_impl(storage: &AppStorage, settings: Value, flush: bool) -> Result<(), String> {
     {
-        let mut state = storage
-            .inner
-            .state
-            .lock()
-            .map_err(|_| "storage state lock poisoned".to_string())?;
+        let mut state = storage.lock_state()?;
         let current_rules = state.text_import_rules.clone();
         state.text_import_rules = text_import_rules_with_fallback(&settings, current_rules);
         state.settings = settings;
@@ -97,11 +89,7 @@ pub fn reset_text_import_rule(storage: StorageAccess<'_, AppStorage>, kind: Text
         TextImportRuleKind::Filename => ("filenamePatterns", defaults.filename_patterns),
     };
     {
-        let mut state = storage
-            .inner
-            .state
-            .lock()
-            .map_err(|_| "storage state lock poisoned".to_string())?;
+        let mut state = storage.lock_state()?;
         let settings = state
             .settings
             .as_object_mut()

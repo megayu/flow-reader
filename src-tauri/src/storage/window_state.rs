@@ -101,11 +101,7 @@ pub fn persist_app_close_state(window: &Window, storage: &AppStorage, input: App
 
     let recent_books_changed = match input.recent_book_ids {
         Some(recent_book_ids) => {
-            let mut state = storage
-                .inner
-                .state
-                .lock()
-                .map_err(|_| "storage state lock poisoned".to_string())?;
+            let mut state = storage.lock_state()?;
             let library_book_ids = state
                 .library
                 .books

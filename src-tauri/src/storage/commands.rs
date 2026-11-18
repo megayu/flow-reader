@@ -55,11 +55,7 @@ pub(super) fn next_tag_id(tags: &[LibraryTagRecord], created_at: u64) -> String 
 
 #[tauri::command]
 pub fn list_books(storage: StorageAccess<'_, AppStorage>) -> Result<Vec<BookRecord>, String> {
-    let state = storage
-        .inner
-        .state
-        .lock()
-        .map_err(|_| "storage state lock poisoned".to_string())?;
+    let state = storage.lock_state()?;
     Ok(state
         .library
         .books
@@ -71,32 +67,20 @@ pub fn list_books(storage: StorageAccess<'_, AppStorage>) -> Result<Vec<BookReco
 
 #[tauri::command]
 pub fn list_tags(storage: StorageAccess<'_, AppStorage>) -> Result<Vec<LibraryTagRecord>, String> {
-    let state = storage
-        .inner
-        .state
-        .lock()
-        .map_err(|_| "storage state lock poisoned".to_string())?;
+    let state = storage.lock_state()?;
 
     Ok(state.library.tags.clone())
 }
 
 #[tauri::command]
 pub fn get_library_pins(storage: StorageAccess<'_, AppStorage>) -> Result<LibraryPins, String> {
-    let state = storage
-        .inner
-        .state
-        .lock()
-        .map_err(|_| "storage state lock poisoned".to_string())?;
+    let state = storage.lock_state()?;
     Ok(state.library.pins.clone())
 }
 
 #[tauri::command]
 pub fn get_recent_book_ids(storage: StorageAccess<'_, AppStorage>) -> Result<Vec<String>, String> {
-    let state = storage
-        .inner
-        .state
-        .lock()
-        .map_err(|_| "storage state lock poisoned".to_string())?;
+    let state = storage.lock_state()?;
     Ok(state.library.recent_book_ids.clone())
 }
 
@@ -115,11 +99,7 @@ pub fn update_library_pin(
     pinned: bool,
 ) -> Result<LibraryPins, String> {
     let changed = {
-        let mut state = storage
-            .inner
-            .state
-            .lock()
-            .map_err(|_| "storage state lock poisoned".to_string())?;
+        let mut state = storage.lock_state()?;
 
         let (items, value) = match kind {
             LibraryPinKind::Author => {
@@ -162,11 +142,7 @@ pub fn update_library_pin(
         storage.mark_library_dirty();
         storage.flush_content_dirty()?;
     }
-    let state = storage
-        .inner
-        .state
-        .lock()
-        .map_err(|_| "storage state lock poisoned".to_string())?;
+    let state = storage.lock_state()?;
     Ok(state.library.pins.clone())
 }
 
@@ -178,11 +154,7 @@ pub fn create_tag(storage: StorageAccess<'_, AppStorage>, name: String) -> Resul
     }
 
     let tag = {
-        let mut state = storage
-            .inner
-            .state
-            .lock()
-            .map_err(|_| "storage state lock poisoned".to_string())?;
+        let mut state = storage.lock_state()?;
 
         if let Some(tag) = state
             .library
@@ -224,11 +196,7 @@ pub fn update_tag(
     }
 
     let tag = {
-        let mut state = storage
-            .inner
-            .state
-            .lock()
-            .map_err(|_| "storage state lock poisoned".to_string())?;
+        let mut state = storage.lock_state()?;
 
         if state
             .library
@@ -261,11 +229,7 @@ pub(super) fn delete_tags_impl(storage: &AppStorage, ids: Vec<String>) -> Result
 
     let mut books = Vec::new();
     {
-        let mut state = storage
-            .inner
-            .state
-            .lock()
-            .map_err(|_| "storage state lock poisoned".to_string())?;
+        let mut state = storage.lock_state()?;
         state.library.tags.retain(|tag| !ids.contains(&tag.id));
         let updated_at = now_ms();
         for book in &mut state.library.books {
@@ -311,11 +275,7 @@ pub(super) fn merge_tags_impl(
 
     let mut books = Vec::new();
     let target = {
-        let mut state = storage
-            .inner
-            .state
-            .lock()
-            .map_err(|_| "storage state lock poisoned".to_string())?;
+        let mut state = storage.lock_state()?;
         let existing_ids = state.library.tags.iter().map(|tag| &tag.id).collect::<HashSet<_>>();
         if source_ids.iter().any(|id| !existing_ids.contains(id)) {
             return Err("selected tag does not exist".to_string());
@@ -430,11 +390,7 @@ pub fn update_book_tags(
 
     let mut books = Vec::new();
     {
-        let mut state = storage
-            .inner
-            .state
-            .lock()
-            .map_err(|_| "storage state lock poisoned".to_string())?;
+        let mut state = storage.lock_state()?;
 
         let existing_tags = state
             .library
@@ -477,11 +433,7 @@ pub fn update_book_reading_status(
     let id_set = ids.into_iter().collect::<std::collections::HashSet<_>>();
 
     {
-        let mut state = storage
-            .inner
-            .state
-            .lock()
-            .map_err(|_| "storage state lock poisoned".to_string())?;
+        let mut state = storage.lock_state()?;
 
         let updated_at = now_ms();
         for book in &mut state.library.books {
@@ -503,11 +455,7 @@ pub fn get_book(storage: StorageAccess<'_, AppStorage>, id: String) -> Result<Op
 
 pub(super) fn get_book_impl(storage: &AppStorage, id: String) -> Result<Option<BookRecord>, String> {
     // Checkpoints use the same lock: do not publish a summary read before a newer write.
-    let mut state = storage
-        .inner
-        .state
-        .lock()
-        .map_err(|_| "storage state lock poisoned".to_string())?;
+    let mut state = storage.lock_state()?;
     let Some(book) = state.library.books.iter_mut().find(|book| book.id == id) else {
         return Ok(None);
     };
@@ -529,11 +477,7 @@ pub(super) fn get_book_impl(storage: &AppStorage, id: String) -> Result<Option<B
 #[tauri::command(async)]
 pub fn open_book_directory(storage: StorageAccess<'_, AppStorage>, id: String) -> Result<(), String> {
     let path = {
-        let state = storage
-            .inner
-            .state
-            .lock()
-            .map_err(|_| "storage state lock poisoned".to_string())?;
+        let state = storage.lock_state()?;
 
         if !state
             .library
@@ -557,11 +501,7 @@ pub fn open_book_directory(storage: StorageAccess<'_, AppStorage>, id: String) -
 #[tauri::command(async)]
 pub fn reveal_book_source(storage: StorageAccess<'_, AppStorage>, id: String) -> Result<bool, String> {
     let path = {
-        let state = storage
-            .inner
-            .state
-            .lock()
-            .map_err(|_| "storage state lock poisoned".to_string())?;
+        let state = storage.lock_state()?;
         let Some(book) = state
             .library
             .books
@@ -599,11 +539,7 @@ pub fn list_covers(
     ids: Option<Vec<String>>,
 ) -> Result<Vec<CoverRecord>, String> {
     let ids = {
-        let state = storage
-            .inner
-            .state
-            .lock()
-            .map_err(|_| "storage state lock poisoned".to_string())?;
+        let state = storage.lock_state()?;
         match ids {
             Some(ids) => {
                 let requested = ids.into_iter().collect::<HashSet<_>>();
@@ -1668,11 +1604,7 @@ fn update_book_impl(storage: &AppStorage, id: String, changes: Value) -> Result<
     };
     let mut cover_changed = false;
     {
-        let mut state = storage
-            .inner
-            .state
-            .lock()
-            .map_err(|_| "storage state lock poisoned".to_string())?;
+        let mut state = storage.lock_state()?;
         let Some(book_index) = state
             .library
             .books

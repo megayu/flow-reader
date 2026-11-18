@@ -143,11 +143,7 @@ pub(super) fn check_book_content_mode_switch_impl(
 
 fn replace_library_book(storage: &AppStorage, book: StoredBook) -> Result<BookRecord, String> {
     let previous = {
-        let mut state = storage
-            .inner
-            .state
-            .lock()
-            .map_err(|_| "storage state lock poisoned".to_string())?;
+        let mut state = storage.lock_state()?;
         let stored = state
             .library
             .books
@@ -397,11 +393,7 @@ pub(super) fn migrate_platform_content_access(library: &mut Library) -> bool {
 
 pub(super) fn set_book_content_access(storage: &AppStorage, id: &str, mode: BookContentMode) -> Result<(), String> {
     let changed = {
-        let mut state = storage
-            .inner
-            .state
-            .lock()
-            .map_err(|_| "storage state lock poisoned".to_string())?;
+        let mut state = storage.lock_state()?;
 
         let book = state
             .library
@@ -496,11 +488,7 @@ pub(super) fn check_book_source_statuses_impl(
     ids: Vec<String>,
 ) -> Result<Vec<BookSourceStatusRecord>, String> {
     let books = {
-        let state = storage
-            .inner
-            .state
-            .lock()
-            .map_err(|_| "storage state lock poisoned".to_string())?;
+        let state = storage.lock_state()?;
         ids.into_iter()
             .filter_map(|id| {
                 state

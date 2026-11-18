@@ -58,11 +58,7 @@ pub(super) fn apply_book_state_checkpoints(
         return Ok(());
     }
 
-    let mut state = storage
-        .inner
-        .state
-        .lock()
-        .map_err(|_| "storage state lock poisoned".to_string())?;
+    let mut state = storage.lock_state()?;
     let mut seen = HashSet::with_capacity(books.len());
     let mut resolved = Vec::with_capacity(books.len());
 

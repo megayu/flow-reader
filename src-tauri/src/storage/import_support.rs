@@ -45,11 +45,7 @@ pub(super) fn same_source_path(left: &Path, right: &Path) -> bool {
 
 impl BookImportLookupIndex {
     pub(super) fn load(storage: &AppStorage) -> Result<Self, String> {
-        let state = storage
-            .inner
-            .state
-            .lock()
-            .map_err(|_| "storage state lock poisoned".to_string())?;
+        let state = storage.lock_state()?;
         let mut source_paths = HashMap::with_capacity(state.library.books.len());
         let mut hashes = HashMap::with_capacity(state.library.books.len());
         let mut export_hashes = HashMap::with_capacity(state.library.books.len());
@@ -261,11 +257,7 @@ pub(super) fn import_book_id(
     source_path: &Path,
     hash: &str,
 ) -> Result<String, String> {
-    let state = storage
-        .inner
-        .state
-        .lock()
-        .map_err(|_| "storage state lock poisoned".to_string())?;
+    let state = storage.lock_state()?;
     Ok(
         match existing_book_import(index, &state.library.books, source_path, hash) {
             Some(

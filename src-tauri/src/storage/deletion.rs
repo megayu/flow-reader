@@ -97,11 +97,7 @@ pub(super) fn clear_book_caches_impl(
 ) -> Result<Vec<BookRecord>, String> {
     let _import_guard = storage.lock_import()?;
     let all_books = {
-        let state = storage
-            .inner
-            .state
-            .lock()
-            .map_err(|_| "storage state lock poisoned".to_string())?;
+        let state = storage.lock_state()?;
         state.library.books.clone()
     };
     let total = all_books.len();
@@ -134,10 +130,7 @@ pub(super) fn clear_book_caches_impl(
         let restored_source = tasks.run_book_exclusive(&id, TaskPriority::Critical, || {
             // The import lock keeps vector positions stable across this batch.
             let book = storage
-                .inner
-                .state
-                .lock()
-                .map_err(|_| "storage state lock poisoned".to_string())?
+                .lock_state()?
                 .library
                 .books
                 .get(book_index)
@@ -205,11 +198,7 @@ pub(super) fn clear_book_caches_impl(
             let restored = !preserve_unpacked && source_restorations.contains_key(&id);
             if restored {
                 let (_, size, hash, _) = &source_restorations[&id];
-                let mut state = storage
-                    .inner
-                    .state
-                    .lock()
-                    .map_err(|_| "storage state lock poisoned".to_string())?;
+                let mut state = storage.lock_state()?;
                 let book = state
                     .library
                     .books
@@ -279,11 +268,7 @@ fn rename_books_in_scope_for_deletion(
     }
 
     {
-        let state = storage
-            .inner
-            .state
-            .lock()
-            .map_err(|_| "storage state lock poisoned".to_string())?;
+        let state = storage.lock_state()?;
         if state
             .library
             .books
@@ -603,11 +588,7 @@ pub(super) fn cleanup_external_book_heavy_files(storage: &AppStorage, id: &str) 
 
 pub fn cleanup_all_external_book_heavy_files(storage: &AppStorage) -> Result<(), String> {
     let ids = {
-        let state = storage
-            .inner
-            .state
-            .lock()
-            .map_err(|_| "storage state lock poisoned".to_string())?;
+        let state = storage.lock_state()?;
         state
             .library
             .books

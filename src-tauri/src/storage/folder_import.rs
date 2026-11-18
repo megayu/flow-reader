@@ -176,11 +176,7 @@ pub(super) fn apply_folder_import_tags_impl(
         .map(|assignment| assignment.book_id.clone())
         .collect::<HashSet<String>>();
     let (books, tags) = {
-        let mut state = storage
-            .inner
-            .state
-            .lock()
-            .map_err(|_| "storage state lock poisoned".to_string())?;
+        let mut state = storage.lock_state()?;
 
         let book_indices = state
             .library

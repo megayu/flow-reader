@@ -1144,11 +1144,7 @@ pub(super) fn should_skip_prepared_text_import_preview(
     storage: &AppStorage,
     prepared: &PreparedTextImport,
 ) -> Result<bool, String> {
-    let state = storage
-        .inner
-        .state
-        .lock()
-        .map_err(|_| "storage state lock poisoned".to_string())?;
+    let state = storage.lock_state()?;
 
     Ok(state.library.books.iter().any(|book| {
         book.scope == BookScope::Library
@@ -1763,11 +1759,7 @@ fn import_text_path_locked(
     });
 
     let (mut book, id, should_copy, adopt_source_only, is_new) = {
-        let state = storage
-            .inner
-            .state
-            .lock()
-            .map_err(|_| "storage state lock poisoned".to_string())?;
+        let state = storage.lock_state()?;
         let existing = existing_book_import(import_index.as_deref(), &state.library.books, &source_path, &hash);
 
         if let Some(ExistingBookImport::SameContent(index)) = existing {
@@ -1865,11 +1857,7 @@ fn import_text_path_locked(
         }
 
         let record = {
-            let mut state = storage
-                .inner
-                .state
-                .lock()
-                .map_err(|_| "storage state lock poisoned".to_string())?;
+            let mut state = storage.lock_state()?;
             let stored_index = import_support::commit_imported_book_record(
                 &mut state.library.books,
                 &mut book,

@@ -88,11 +88,7 @@ impl AppStorage {
 
         let result = (|| {
             let (library, settings) = {
-                let state = self
-                    .inner
-                    .state
-                    .lock()
-                    .map_err(|_| "storage state lock poisoned".to_string())?;
+                let state = self.lock_state()?;
                 let library = dirty.library.then(|| clone_library(&state.library));
                 let settings = dirty.settings.then(|| state.settings.clone());
                 (library, settings)

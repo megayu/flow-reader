@@ -406,11 +406,7 @@ pub(super) fn export_book_impl(
     };
 
     let book = {
-        let mut state = storage
-            .inner
-            .state
-            .lock()
-            .map_err(|_| "storage state lock poisoned".to_string())?;
+        let mut state = storage.lock_state()?;
         let Some(book) = state
             .library
             .books

@@ -108,11 +108,7 @@ fn epub_import_requires_inspection(
     source_path: &Path,
     hash: &str,
 ) -> Result<bool, String> {
-    let state = storage
-        .inner
-        .state
-        .lock()
-        .map_err(|_| "storage state lock poisoned".to_string())?;
+    let state = storage.lock_state()?;
     Ok(
         match existing_book_import(import_index, &state.library.books, source_path, hash) {
             Some(ExistingBookImport::ReplaceContent(_)) => true,
@@ -241,11 +237,7 @@ fn commit_prepared_epub_import_locked(
         }
 
         let (mut book, id, refresh_content, adopt_source_only, is_new, external_promotion) = {
-            let state = storage
-                .inner
-                .state
-                .lock()
-                .map_err(|_| "storage state lock poisoned".to_string())?;
+            let state = storage.lock_state()?;
             let existing = existing_book_import(import_index.as_deref(), &state.library.books, &source_path, &hash);
             let external_promotion = existing
                 .is_none()
@@ -404,11 +396,7 @@ fn commit_prepared_epub_import_locked(
         }
 
         let stored_index = {
-            let mut state = storage
-                .inner
-                .state
-                .lock()
-                .map_err(|_| "storage state lock poisoned".to_string())?;
+            let mut state = storage.lock_state()?;
             if external_promotion.is_some() {
                 let stored_index = state
                     .library
@@ -503,11 +491,7 @@ pub(in crate::storage) fn open_external_epub_path_unflushed_impl(
     let id = id_from_hash(&hash);
 
     let existing = {
-        let state = storage
-            .inner
-            .state
-            .lock()
-            .map_err(|_| "storage state lock poisoned".to_string())?;
+        let state = storage.lock_state()?;
         if let Some(book) = state
             .library
             .books
@@ -534,11 +518,7 @@ pub(in crate::storage) fn open_external_epub_path_unflushed_impl(
 
     let now = now_ms();
     let book = {
-        let mut state = storage
-            .inner
-            .state
-            .lock()
-            .map_err(|_| "storage state lock poisoned".to_string())?;
+        let mut state = storage.lock_state()?;
         if let Some(book) = state
             .library
             .books
@@ -628,11 +608,7 @@ pub(super) fn managed_library_book_for_epub_path(
         return Ok(None);
     };
 
-    let state = storage
-        .inner
-        .state
-        .lock()
-        .map_err(|_| "storage state lock poisoned".to_string())?;
+    let state = storage.lock_state()?;
     let Some(book) = state
         .library
         .books

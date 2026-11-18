@@ -877,11 +877,7 @@ fn commit_book_text_edit(
         .flush_lock
         .lock()
         .map_err(|_| "storage flush lock poisoned".to_string())?;
-    let mut state = storage
-        .inner
-        .state
-        .lock()
-        .map_err(|_| "storage state lock poisoned".to_string())?;
+    let mut state = storage.lock_state()?;
     let mut library = clone_library(&state.library);
     let book = library
         .books
@@ -915,11 +911,7 @@ fn commit_book_text_edit(
 
 pub(super) fn mark_library_book_content_updated(storage: &AppStorage, id: &str) -> Result<Option<StoredBook>, String> {
     let updated = {
-        let mut state = storage
-            .inner
-            .state
-            .lock()
-            .map_err(|_| "storage state lock poisoned".to_string())?;
+        let mut state = storage.lock_state()?;
         let Some(book) = state
             .library
             .books

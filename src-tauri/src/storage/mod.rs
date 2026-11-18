@@ -279,6 +279,13 @@ impl AppStorage {
         }
     }
 
+    fn lock_state(&self) -> Result<std::sync::MutexGuard<'_, StorageState>, String> {
+        self.inner
+            .state
+            .lock()
+            .map_err(|_| "storage state lock poisoned".to_string())
+    }
+
     // Acquire before state or task resource locks. A batch keeps its lookup indices stable.
     fn lock_import(&self) -> Result<std::sync::MutexGuard<'_, ()>, String> {
         self.inner
@@ -367,11 +374,7 @@ impl AppStorage {
         if !is_valid_book_storage_id(id) {
             return Err("Invalid book id".to_string());
         }
-        let state = self
-            .inner
-            .state
-            .lock()
-            .map_err(|_| "storage state lock poisoned".to_string())?;
+        let state = self.lock_state()?;
 
         state
             .library
@@ -393,11 +396,7 @@ impl AppStorage {
         if !is_valid_book_storage_id(id) {
             return Err("Invalid external book id".to_string());
         }
-        let state = self
-            .inner
-            .state
-            .lock()
-            .map_err(|_| "storage state lock poisoned".to_string())?;
+        let state = self.lock_state()?;
         state
             .library
             .books
@@ -642,11 +641,7 @@ impl AppStorage {
     }
 
     fn text_import_rules(&self) -> Result<TextImportRulesInput, String> {
-        let state = self
-            .inner
-            .state
-            .lock()
-            .map_err(|_| "storage state lock poisoned".to_string())?;
+        let state = self.lock_state()?;
         Ok(state.text_import_rules.clone())
     }
 }
