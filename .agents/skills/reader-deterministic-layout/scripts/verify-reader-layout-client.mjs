@@ -386,7 +386,7 @@ async function installBrowserTauriMock(page, books) {
         if (!current) return null
         const updated = { ...current, ...(args.changes ?? {}) }
         bookStore.set(id, updated)
-        return updated
+        return null
       }
       if (command === 'import_text_paths') return Array.from(bookStore.values())
       if (command === 'list_covers') return []

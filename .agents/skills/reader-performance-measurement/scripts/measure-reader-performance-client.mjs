@@ -363,7 +363,7 @@ async function installBrowserTauriMock(page, books) {
         if (!current) return null
         const updated = { ...current, ...(args.changes ?? {}) }
         bookStore.set(id, updated)
-        return updated
+        return null
       }
       if (command === 'import_text_paths') {
         return { books: Array.from(bookStore.values()), failures: [], skipped: [] }
@@ -409,7 +409,7 @@ async function installRuntimePerfBookMock(page, books) {
         if (!current) return null
         const updated = { ...current, ...(args.changes ?? {}) }
         bookStore.set(id, updated)
-        return updated
+        return null
       }
       if (command === 'import_text_paths') {
         return { books: Array.from(bookStore.values()), failures: [], skipped: [] }

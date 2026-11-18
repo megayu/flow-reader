@@ -174,7 +174,7 @@ export async function installRenderAuditFixture(context, books) {
         if (!current) return null
         const updated = { ...current, ...(args.changes ?? {}) }
         bookStore.set(id, updated)
-        return updated
+        return null
       }
       if (command === 'list_covers') return []
       if (command === 'get_cover') return null
