@@ -183,7 +183,7 @@ export async function installRenderAuditFixture(context, books) {
         return { mode: 'opf', path: bookStore.get(String(args.id))?.packageUrl ?? '' }
       }
       if (command === 'take_pending_open_paths') return []
-      if (command === 'flush_storage' || command === 'set_book_cache_active') return null
+      if (command === 'flush_storage' || command === 'release_book_reader_cache') return null
       if (command === 'search_book_text') return []
       if (command === 'list_system_fonts') return []
       if (command === 'plugin:event|listen') return nextEventId++

@@ -95,7 +95,7 @@ interface StorageCommands {
   reveal_book_source(args: { id: string }): boolean
   reveal_exported_file(args: { path: string }): void
   scan_import_folder(args: { root: string; recursive: boolean }): FolderImportCandidate[]
-  set_book_cache_active(args: { id: string; active: boolean }): void
+  release_book_reader_cache(args: { id: string }): void
   switch_book_content_mode(args: {
     id: string
     editable: boolean

@@ -1457,20 +1457,17 @@ pub async fn load_book_image_index(
 }
 
 #[tauri::command]
-pub async fn set_book_cache_active(
+pub async fn release_book_reader_cache(
     storage: StorageAccess<'_, AppStorage>,
     tasks: State<'_, TaskService>,
     id: String,
-    active: bool,
 ) -> Result<(), String> {
     let storage = (*storage).clone();
     let tasks = (*tasks).clone();
     tauri::async_runtime::spawn_blocking(move || {
         tasks.run_book_exclusive(&id, TaskPriority::Critical, || {
-            let result = storage.set_derived_cache_active(&id, active);
-            if !active {
-                storage.release_archive_resource(&id);
-            }
+            let result = storage.set_derived_cache_active(&id, false);
+            storage.release_archive_resource(&id);
             result
         })
     })

@@ -630,7 +630,7 @@ export const db = {
       }
     },
     closeReader(id: string) {
-      return invoke('set_book_cache_active', { id, active: false })
+      return invoke('release_book_reader_cache', { id })
     },
   },
   covers: {

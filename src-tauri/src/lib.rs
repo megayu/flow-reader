@@ -523,7 +523,7 @@ pub fn run() {
             storage::load_book_image_index,
             storage::image_download::download_reader_image,
             storage::image_download::write_image_download,
-            storage::set_book_cache_active,
+            storage::release_book_reader_cache,
             storage::replace_book_text,
             storage::export_book,
             storage::cleanup_external_book,
