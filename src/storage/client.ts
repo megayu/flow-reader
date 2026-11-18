@@ -170,15 +170,19 @@ function rememberTag(tag: LibraryTagRecord) {
 }
 
 function applyTagBookUpdates(books: BookRecord[]) {
+  if (!books.length || !booksCache?.length) return
+
   const updates = new Map(books.map((book) => [book.id, book]))
-  // Tag replies must not overwrite concurrent reading state or restore deleted books.
-  upsertCachedBooks(
-    (booksCache ?? []).flatMap((book) => {
-      const update = updates.get(book.id)
-      if (!update) return []
-      return [{ ...book, tagIds: update.tagIds, updatedAt: Math.max(book.updatedAt ?? 0, update.updatedAt ?? 0) }]
-    }),
-  )
+  let next: BookRecord[] | undefined
+  for (const [index, book] of booksCache.entries()) {
+    const update = updates.get(book.id)
+    if (!update) continue
+
+    // Preserve any reading state updated while the tag command was in flight.
+    next ??= booksCache.slice()
+    next[index] = { ...book, tagIds: update.tagIds, updatedAt: Math.max(book.updatedAt ?? 0, update.updatedAt ?? 0) }
+  }
+  if (next) booksCache = next
 }
 
 function runTagMutation<T>(operation: () => Promise<T>) {
