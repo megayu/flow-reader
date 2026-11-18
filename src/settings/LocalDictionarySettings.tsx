@@ -9,7 +9,7 @@ import {
   PlusIcon,
   Trash2Icon,
 } from 'lucide-react'
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
 import { Button as UiButton } from '@/components/ui/button'
 import { Checkbox as UiCheckbox } from '@/components/ui/checkbox'
@@ -319,6 +319,74 @@ export function LocalDictionarySettings({ settings, setSettings }: LocalDictiona
     setDropTarget(undefined)
   }
 
+  const renderEditor = (source: DictionarySource) => {
+    if (source.kind === 'merriam-webster') {
+      return (
+        <div
+          data-merriam-webster-key-row
+          className="mt-3 flex w-full max-w-full min-w-0 items-center gap-2 overflow-hidden pl-7"
+        >
+          <div className="relative min-w-0 flex-1">
+            <Input
+              autoFocus
+              type={showMerriamWebsterKey ? 'text' : 'password'}
+              className="focus-visible:border-input w-full max-w-full pr-9 focus-visible:ring-0"
+              data-dictionary-inline-editor
+              value={merriamWebsterKey}
+              onValueChange={setMerriamWebsterKey}
+              onExitEditing={() => cancelEditing(source.id)}
+              onKeyDown={(event) => {
+                if (event.key === 'Enter') {
+                  saveEditing(source.id)
+                }
+              }}
+            />
+            <UiButton
+              type="button"
+              variant="ghost"
+              size="icon-sm"
+              className="absolute top-0.5 right-0.5 size-7"
+              onMouseDown={(event) => event.preventDefault()}
+              onClick={() => setShowMerriamWebsterKey(!showMerriamWebsterKey)}
+            >
+              {showMerriamWebsterKey ? <EyeOffIcon className="size-4" /> : <EyeIcon className="size-4" />}
+            </UiButton>
+          </div>
+          <UiButton
+            type="button"
+            variant="ghost"
+            size="sm"
+            className="text-muted-foreground ml-auto h-8 shrink-0 gap-1.5 px-2"
+            onMouseDown={(event) => event.preventDefault()}
+            onClick={() => {
+              void openSupportedExternalUrl('https://dictionaryapi.com/').catch(() => undefined)
+            }}
+          >
+            {t('settings.dictionary.get_api_key')}
+            <ExternalLinkIcon className="size-4" />
+          </UiButton>
+        </div>
+      )
+    }
+    if (source.kind === 'local') {
+      return (
+        <LocalDictionaryEditor
+          dictionary={source.dictionary}
+          name={localNameDraft}
+          languages={localLanguagesDraft}
+          confirmRemoveId={confirmRemoveId}
+          onCancel={() => cancelEditing(source.id)}
+          onSave={() => saveEditing(source.id)}
+          onNameChange={setLocalNameDraft}
+          onLanguagesChange={setLocalLanguagesDraft}
+          onRelocate={relocate}
+          onRemove={remove}
+          onConfirmRemoveChange={setConfirmRemoveId}
+        />
+      )
+    }
+  }
+
   return (
     <section
       className="w-full max-w-full min-w-0 space-y-3 overflow-hidden"
@@ -358,44 +426,44 @@ export function LocalDictionarySettings({ settings, setSettings }: LocalDictiona
         </div>
       ) : (
         <div className="border-border divide-border w-full max-w-full min-w-0 divide-y overflow-hidden rounded-md border">
-          {sources.map((source) => (
-            <DictionarySourceRow
-              key={source.id}
-              source={source}
-              editing={editingSourceId === source.id}
-              dropAfter={dropTarget?.sourceId === source.id ? dropTarget.after : undefined}
-              dictionarySettings={dictionarySettings}
-              localNameDraft={localNameDraft}
-              localLanguagesDraft={localLanguagesDraft}
-              merriamWebsterKey={merriamWebsterKey}
-              showMerriamWebsterKey={showMerriamWebsterKey}
-              confirmRemoveId={confirmRemoveId}
-              t={t}
-              onDragStart={(sourceId) => {
-                draggedSourceIdRef.current = sourceId
-              }}
-              onDragMove={updateDragTarget}
-              onDragEnd={finishDrag}
-              onDragCancel={() => {
-                draggedSourceIdRef.current = undefined
-                dropTargetRef.current = undefined
-                setDropTarget(undefined)
-              }}
-              onEditMerriamWebster={editMerriamWebster}
-              onEditLocal={editLocalDictionary}
-              onSaveEdit={() => saveEditing(source.id)}
-              onCancelEdit={() => cancelEditing(source.id)}
-              onLocalNameChange={setLocalNameDraft}
-              onLocalLanguagesChange={setLocalLanguagesDraft}
-              onMerriamWebsterKeyChange={setMerriamWebsterKey}
-              onShowMerriamWebsterKeyChange={setShowMerriamWebsterKey}
-              onUpdateDictionarySettings={updateDictionarySettings}
-              onUpdateRecord={updateRecord}
-              onRelocate={relocate}
-              onRemove={remove}
-              onConfirmRemoveChange={setConfirmRemoveId}
-            />
-          ))}
+          {sources.map((source) => {
+            const editing = editingSourceId === source.id
+            const edit = () => {
+              if (editing) saveEditing(source.id)
+              else if (source.kind === 'merriam-webster') editMerriamWebster()
+              else if (source.kind === 'local') editLocalDictionary(source.dictionary)
+            }
+            return (
+              <DictionarySourceRow
+                key={source.id}
+                source={source}
+                editing={editing}
+                dropAfter={dropTarget?.sourceId === source.id ? dropTarget.after : undefined}
+                dictionarySettings={dictionarySettings}
+                localDescription={
+                  source.kind === 'local'
+                    ? localMetadata(source.dictionary, t, editing ? localLanguagesDraft : undefined)
+                    : undefined
+                }
+                t={t}
+                onDragStart={(sourceId) => {
+                  draggedSourceIdRef.current = sourceId
+                }}
+                onDragMove={updateDragTarget}
+                onDragEnd={finishDrag}
+                onDragCancel={() => {
+                  draggedSourceIdRef.current = undefined
+                  dropTargetRef.current = undefined
+                  setDropTarget(undefined)
+                }}
+                onEdit={edit}
+                onUpdateDictionarySettings={updateDictionarySettings}
+                onUpdateRecord={updateRecord}
+              >
+                {editing && renderEditor(source)}
+              </DictionarySourceRow>
+            )
+          })}
         </div>
       )}
     </section>
@@ -405,63 +473,37 @@ export function LocalDictionarySettings({ settings, setSettings }: LocalDictiona
 type Translation = ReturnType<typeof useTranslation>
 
 interface DictionarySourceRowProps {
+  children?: ReactNode
+  localDescription?: string
+  onEdit: () => void
   source: DictionarySource
   editing: boolean
   dropAfter?: boolean
   dictionarySettings: typeof defaultDictionarySettings
-  localNameDraft: string
-  localLanguagesDraft: LocalDictionaryLanguage[]
-  merriamWebsterKey: string
-  showMerriamWebsterKey: boolean
-  confirmRemoveId?: string
   t: Translation
   onDragStart: (sourceId: string) => void
   onDragMove: (clientX: number, clientY: number) => void
   onDragEnd: () => void
   onDragCancel: () => void
-  onEditMerriamWebster: () => void
-  onEditLocal: (dictionary: LocalDictionaryRecord) => void
-  onSaveEdit: () => void
-  onCancelEdit: () => void
-  onLocalNameChange: (value: string) => void
-  onLocalLanguagesChange: (value: LocalDictionaryLanguage[]) => void
-  onMerriamWebsterKeyChange: (value: string) => void
-  onShowMerriamWebsterKeyChange: (value: boolean) => void
   onUpdateDictionarySettings: (changes: Partial<typeof defaultDictionarySettings>) => void
   onUpdateRecord: (id: string, changes: LocalDictionaryUpdate) => Promise<void>
-  onRelocate: (id: string) => Promise<void>
-  onRemove: (id: string) => Promise<void>
-  onConfirmRemoveChange: (id: string | undefined) => void
 }
 
 function DictionarySourceRow({
+  children,
+  localDescription,
+  onEdit,
   source,
   editing,
   dropAfter,
   dictionarySettings,
-  localNameDraft,
-  localLanguagesDraft,
-  merriamWebsterKey,
-  showMerriamWebsterKey,
-  confirmRemoveId,
   t,
   onDragStart,
   onDragMove,
   onDragEnd,
   onDragCancel,
-  onEditMerriamWebster,
-  onEditLocal,
-  onSaveEdit,
-  onCancelEdit,
-  onLocalNameChange,
-  onLocalLanguagesChange,
-  onMerriamWebsterKeyChange,
-  onShowMerriamWebsterKeyChange,
   onUpdateDictionarySettings,
   onUpdateRecord,
-  onRelocate,
-  onRemove,
-  onConfirmRemoveChange,
 }: DictionarySourceRowProps) {
   const local = source.kind === 'local' ? source.dictionary : undefined
   const name =
@@ -518,15 +560,7 @@ function DictionarySourceRow({
                 variant="ghost"
                 size="icon-sm"
                 className="text-muted-foreground size-7"
-                onClick={() => {
-                  if (editing) {
-                    onSaveEdit()
-                  } else if (source.kind === 'merriam-webster') {
-                    onEditMerriamWebster()
-                  } else {
-                    onEditLocal(source.dictionary)
-                  }
-                }}
+                onClick={onEdit}
               >
                 {editing ? <CheckIcon className="size-3.5" /> : <PencilIcon className="size-3.5" />}
               </UiButton>
@@ -549,7 +583,7 @@ function DictionarySourceRow({
                 ? `English · Collegiate Dictionary · ${t(
                     configured ? 'settings.dictionary.configured' : 'settings.dictionary.not_configured',
                   )}`
-                : localMetadata(source.dictionary, t, editing ? localLanguagesDraft : undefined)}
+                : localDescription}
           </div>
         </div>
         <span
@@ -584,68 +618,7 @@ function DictionarySourceRow({
         </span>
       </div>
 
-      {editing && source.kind === 'merriam-webster' && (
-        <div
-          data-merriam-webster-key-row
-          className="mt-3 flex w-full max-w-full min-w-0 items-center gap-2 overflow-hidden pl-7"
-        >
-          <div className="relative min-w-0 flex-1">
-            <Input
-              autoFocus
-              type={showMerriamWebsterKey ? 'text' : 'password'}
-              className="focus-visible:border-input w-full max-w-full pr-9 focus-visible:ring-0"
-              data-dictionary-inline-editor
-              value={merriamWebsterKey}
-              onValueChange={onMerriamWebsterKeyChange}
-              onExitEditing={onCancelEdit}
-              onKeyDown={(event) => {
-                if (event.key === 'Enter') {
-                  onSaveEdit()
-                }
-              }}
-            />
-            <UiButton
-              type="button"
-              variant="ghost"
-              size="icon-sm"
-              className="absolute top-0.5 right-0.5 size-7"
-              onMouseDown={(event) => event.preventDefault()}
-              onClick={() => onShowMerriamWebsterKeyChange(!showMerriamWebsterKey)}
-            >
-              {showMerriamWebsterKey ? <EyeOffIcon className="size-4" /> : <EyeIcon className="size-4" />}
-            </UiButton>
-          </div>
-          <UiButton
-            type="button"
-            variant="ghost"
-            size="sm"
-            className="text-muted-foreground ml-auto h-8 shrink-0 gap-1.5 px-2"
-            onMouseDown={(event) => event.preventDefault()}
-            onClick={() => {
-              void openSupportedExternalUrl('https://dictionaryapi.com/').catch(() => undefined)
-            }}
-          >
-            {t('settings.dictionary.get_api_key')}
-            <ExternalLinkIcon className="size-4" />
-          </UiButton>
-        </div>
-      )}
-
-      {editing && source.kind === 'local' && (
-        <LocalDictionaryEditor
-          dictionary={source.dictionary}
-          name={localNameDraft}
-          languages={localLanguagesDraft}
-          confirmRemoveId={confirmRemoveId}
-          onCancel={onCancelEdit}
-          onSave={onSaveEdit}
-          onNameChange={onLocalNameChange}
-          onLanguagesChange={onLocalLanguagesChange}
-          onRelocate={onRelocate}
-          onRemove={onRemove}
-          onConfirmRemoveChange={onConfirmRemoveChange}
-        />
-      )}
+      {children}
     </div>
   )
 }
