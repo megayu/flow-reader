@@ -110,10 +110,11 @@ use search::{
 };
 use state::{DirtyState, StorageState};
 use text_import::{
-    PreparedTextImport, create_skipped_text_import_preview, create_text_cover_input, create_text_import_error_preview,
-    create_text_import_preview_from_prepared, decode_text_bytes, encode_text_bytes, import_text_path_impl,
-    materialize_library_text_publication, prepare_text_import, should_skip_prepared_text_import_preview,
-    source_encoding_id_from_metadata, text_import_encoding_options, write_text_cover_to_unpacked,
+    PreparedTextSelection, create_skipped_text_import_preview, create_text_cover_input,
+    create_text_import_error_preview, create_text_import_preview_from_prepared, decode_text_bytes, encode_text_bytes,
+    import_text_path_impl, materialize_library_text_publication, prepare_text_import, prepare_text_selection,
+    should_skip_prepared_text_import_preview, source_encoding_id_from_metadata, text_import_encoding_options,
+    write_text_cover_to_unpacked,
 };
 #[cfg(test)]
 use text_import::{parse_text_import_document, text_content_opf, text_nav_xhtml, text_section_xhtml};

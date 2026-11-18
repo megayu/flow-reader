@@ -1052,21 +1052,12 @@ fn commit_prepared_text_selection(
     storage: &AppStorage,
     tasks: &TaskService,
     import: &TextImportSelection,
-    prepared: Arc<PreparedTextImport>,
-    copy_source_file: bool,
+    prepared: PreparedTextSelection,
     rules: Option<&TextImportRulesInput>,
     state: &mut TextImportBatchState<'_>,
 ) -> Result<Option<(BookRecord, ImportFinalizer)>, BookImportFailure> {
-    import_text_path_impl(
-        storage,
-        tasks,
-        prepared,
-        import,
-        copy_source_file,
-        rules,
-        Some(state.import_index),
-    )
-    .map_err(|error| book_import_failure(Path::new(&import.path), error))
+    import_text_path_impl(storage, tasks, prepared, import, rules, Some(state.import_index))
+        .map_err(|error| book_import_failure(Path::new(&import.path), error))
 }
 
 fn import_text_paths_direct(
@@ -1083,7 +1074,14 @@ fn import_text_paths_direct(
     let mut finalizers = Vec::new();
     for import in imports {
         let path = PathBuf::from(&import.path);
-        let prepared = match prepare_text_import(storage, tasks, &path, import.encoding.as_deref(), rules) {
+        let prepared = match prepare_text_selection(
+            storage,
+            tasks,
+            &path,
+            import.encoding.as_deref(),
+            rules,
+            copy_source_file,
+        ) {
             Ok(prepared) => prepared,
             Err(error) => {
                 let failure = book_import_failure(&path, error);
@@ -1092,15 +1090,14 @@ fn import_text_paths_direct(
                 continue;
             }
         };
-        let result =
-            match commit_prepared_text_selection(storage, tasks, &import, prepared, copy_source_file, rules, state) {
-                Ok(result) => result,
-                Err(failure) => {
-                    state.progress.emit_failure();
-                    failures.push(failure);
-                    continue;
-                }
-            };
+        let result = match commit_prepared_text_selection(storage, tasks, &import, prepared, rules, state) {
+            Ok(result) => result,
+            Err(failure) => {
+                state.progress.emit_failure();
+                failures.push(failure);
+                continue;
+            }
+        };
         let Some((book, finalizer)) = result else {
             state.progress.emit_skip();
             skipped.push(book_import_filename(&path));
@@ -1122,7 +1119,7 @@ fn import_text_paths_direct(
 struct TextImportPrepareMessage {
     index: usize,
     import: TextImportSelection,
-    prepared: Result<Arc<PreparedTextImport>, String>,
+    prepared: Result<PreparedTextSelection, String>,
 }
 
 fn import_text_paths_with_pipeline(
@@ -1157,7 +1154,14 @@ fn import_text_paths_with_pipeline(
                         break;
                     };
                     let path = PathBuf::from(&import.path);
-                    let prepared = prepare_text_import(storage, tasks, &path, import.encoding.as_deref(), rules);
+                    let prepared = prepare_text_selection(
+                        storage,
+                        tasks,
+                        &path,
+                        import.encoding.as_deref(),
+                        rules,
+                        copy_source_file,
+                    );
                     storage.begin_text_import_prepared_handoff();
                     if sender
                         .send(TextImportPrepareMessage {
@@ -1181,15 +1185,8 @@ fn import_text_paths_with_pipeline(
                 .map_err(|_| "text import prepare worker stopped before completing".to_string())?;
             match message.prepared {
                 Ok(prepared) => {
-                    let result = commit_prepared_text_selection(
-                        storage,
-                        tasks,
-                        &message.import,
-                        prepared,
-                        copy_source_file,
-                        rules,
-                        state,
-                    );
+                    let result =
+                        commit_prepared_text_selection(storage, tasks, &message.import, prepared, rules, state);
                     storage.end_text_import_prepared_handoff();
                     match result {
                         Ok(Some((book, finalizer))) => {

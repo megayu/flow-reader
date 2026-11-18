@@ -137,15 +137,39 @@ pub(super) struct TextImportPreparedKey {
 }
 
 #[derive(Debug, Clone)]
-pub(super) struct PreparedTextImport {
+pub(super) struct TextImportSource {
     pub(super) path: PathBuf,
     pub(super) filename: String,
     pub(super) fallback_title: String,
     pub(super) fallback_creator: String,
     pub(super) size: u64,
     pub(super) hash: String,
+    encoding: String,
+}
+
+#[derive(Debug, Clone)]
+pub(super) struct PreparedTextImport {
+    source: TextImportSource,
     original_bytes: Option<Vec<u8>>,
     pub(super) decoded: DecodedText,
+}
+
+pub(super) enum PreparedTextSelection {
+    Referenced(Arc<TextImportSource>),
+    Document {
+        document: Arc<PreparedTextImport>,
+        source_storage: SourceStorage,
+        materialize: bool,
+    },
+}
+
+impl PreparedTextSelection {
+    fn source(&self) -> &TextImportSource {
+        match self {
+            Self::Referenced(source) => source,
+            Self::Document { document, .. } => &document.source,
+        }
+    }
 }
 
 impl TextImportPreparedKey {
@@ -320,26 +344,9 @@ pub(super) fn decode_text_bytes(bytes: &[u8], encoding: Option<&str>) -> Decoded
         return DecodedText::utf8(text.to_string());
     }
 
-    let sample = sample_text_bytes(bytes);
-
-    let mut best: Option<(&'static str, &'static str, &'static Encoding, i32, bool)> = None;
-    for (id, label, encoding) in [
-        ("gb18030", "GB18030", GB18030),
-        ("big5", "Big5", BIG5),
-        ("shift_jis", "Shift_JIS", SHIFT_JIS),
-        ("euc-kr", "EUC-KR", EUC_KR),
-        ("windows-1250", "Windows-1250", WINDOWS_1250),
-        ("windows-1251", "Windows-1251", WINDOWS_1251),
-        ("windows-1252", "Windows-1252", WINDOWS_1252),
-    ] {
-        let (text, had_errors) = decode_with_encoding(&sample, encoding);
-        let score = score_decoded_text(&text, had_errors);
-        if best.as_ref().is_none_or(|(_, _, _, best_score, _)| score > *best_score) {
-            best = Some((id, label, encoding, score, had_errors));
-        }
-    }
-
-    let Some((id, label, encoding, score, had_errors)) = best else {
+    let sample = sample_text_bytes(&mut io::Cursor::new(bytes), bytes.len() as u64)
+        .expect("sample ranges are within the supplied slice");
+    let Some((id, label, encoding, score, had_errors)) = select_encoding_from_sample(&sample) else {
         return DecodedText {
             text: String::new(),
             encoding: "gb18030".to_string(),
@@ -410,19 +417,48 @@ pub(super) fn encode_text_bytes(text: &str, encoding: &str, write_bom: bool) -> 
     }
 }
 
-fn sample_text_bytes(bytes: &[u8]) -> Vec<u8> {
+fn sample_text_bytes(reader: &mut (impl Read + Seek), size: u64) -> io::Result<Vec<u8>> {
     const SAMPLE_SIZE: usize = 64 * 1024;
-    if bytes.len() <= SAMPLE_SIZE * 4 {
-        return bytes.to_vec();
+    let window = SAMPLE_SIZE as u64;
+    if size <= 4 * window {
+        reader.rewind()?;
+        let mut sample = vec![0; size as usize];
+        reader.read_exact(&mut sample)?;
+        return Ok(sample);
     }
+    let mut sample = vec![0; 3 * SAMPLE_SIZE];
+    for (target, offset) in
+        sample
+            .as_chunks_mut::<SAMPLE_SIZE>()
+            .0
+            .iter_mut()
+            .zip([0, size / 2 - window / 2, size - window])
+    {
+        reader.seek(SeekFrom::Start(offset))?;
+        reader.read_exact(target)?;
+    }
+    Ok(sample)
+}
 
-    let mut sample = Vec::with_capacity(SAMPLE_SIZE * 3);
-    sample.extend_from_slice(&bytes[..SAMPLE_SIZE]);
-
-    let middle_start = bytes.len() / 2usize - SAMPLE_SIZE / 2usize;
-    sample.extend_from_slice(&bytes[middle_start..middle_start + SAMPLE_SIZE]);
-    sample.extend_from_slice(&bytes[bytes.len() - SAMPLE_SIZE..]);
-    sample
+fn select_encoding_from_sample(sample: &[u8]) -> Option<(&'static str, &'static str, &'static Encoding, i32, bool)> {
+    let mut best = None;
+    for id in [
+        "gb18030",
+        "big5",
+        "shift_jis",
+        "euc-kr",
+        "windows-1250",
+        "windows-1251",
+        "windows-1252",
+    ] {
+        let (id, label, encoding) = text_encoding_by_id(id)?;
+        let (text, had_errors) = decode_with_encoding(sample, encoding);
+        let score = score_decoded_text(&text, had_errors);
+        if best.as_ref().is_none_or(|(_, _, _, best_score, _)| score > *best_score) {
+            best = Some((id, label, encoding, score, had_errors));
+        }
+    }
+    best
 }
 
 fn score_decoded_text(text: &str, had_errors: bool) -> i32 {
@@ -928,10 +964,10 @@ pub(super) fn text_import_filename_metadata(
 
 pub(super) fn create_skipped_text_import_preview(prepared: &PreparedTextImport) -> TextImportPreview {
     TextImportPreview {
-        path: path_to_client_string(&prepared.path),
-        filename: prepared.filename.clone(),
-        title: prepared.fallback_title.clone(),
-        creator: prepared.fallback_creator.clone(),
+        path: path_to_client_string(&prepared.source.path),
+        filename: prepared.source.filename.clone(),
+        title: prepared.source.fallback_title.clone(),
+        creator: prepared.source.fallback_creator.clone(),
         encoding: "auto".to_string(),
         encoding_label: "Auto".to_string(),
         confidence: "high".to_string(),
@@ -1051,6 +1087,24 @@ fn prepare_text_import_entry(
     key: TextImportPreparedKey,
 ) -> Result<Arc<PreparedTextImport>, String> {
     let bytes = fs::read(path).map_err(|error| error.to_string())?;
+    let hash = hash_text_import_bytes(&bytes);
+    let (decoded, original_bytes) = decode_import_source(bytes, encoding);
+    let source = prepared_text_source(path, encoding, rules, key, hash, &decoded.encoding)?;
+    Ok(Arc::new(PreparedTextImport {
+        source,
+        original_bytes,
+        decoded,
+    }))
+}
+
+fn prepared_text_source(
+    path: &Path,
+    encoding: Option<&str>,
+    rules: Option<&TextImportRulesInput>,
+    key: TextImportPreparedKey,
+    hash: String,
+    detected_encoding: &str,
+) -> Result<TextImportSource, String> {
     let metadata = fs::metadata(path).map_err(|error| error.to_string())?;
     let latest_key = text_import_prepared_key_from_metadata(path, encoding, rules, &metadata);
     if latest_key != key {
@@ -1062,18 +1116,65 @@ fn prepare_text_import_entry(
         .map(|name| name.to_string_lossy().to_string())
         .unwrap_or_else(|| "book.txt".to_string());
     let filename_metadata = text_import_filename_metadata(path, rules);
-    let hash = hash_text_import_bytes(&bytes);
-    let (decoded, original_bytes) = decode_import_source(bytes, encoding);
-    Ok(Arc::new(PreparedTextImport {
+    Ok(TextImportSource {
         path: path.to_path_buf(),
         filename,
         fallback_title: filename_metadata.title,
         fallback_creator: filename_metadata.creator,
         size: metadata.len(),
         hash,
-        original_bytes,
-        decoded,
-    }))
+        encoding: detected_encoding.to_string(),
+    })
+}
+
+fn scan_referenced_text(path: &Path, encoding: Option<&str>) -> io::Result<(String, &'static str)> {
+    let mut file = fs::File::open(path)?;
+    let mut prefix = Vec::with_capacity(3);
+    (&mut file).take(3).read_to_end(&mut prefix)?;
+    file.rewind()?;
+    let known_encoding = encoding
+        .and_then(text_encoding_by_id)
+        .map(|(id, _, _)| id)
+        .or_else(|| Encoding::for_bom(&prefix).and_then(|(encoding, _)| text_encoding_id_by_label(encoding.name())));
+    let mut buffer = [0u8; 64 * 1024];
+    let mut hasher = Sha256::new();
+    let mut size = 0;
+    let mut check_utf8 = known_encoding.is_none();
+    let mut carry = 0;
+    loop {
+        let read = file.read(&mut buffer[carry..])?;
+        if read == 0 {
+            break;
+        }
+        let end = carry + read;
+        hasher.update(&buffer[carry..end]);
+        size += read as u64;
+        if check_utf8 {
+            match std::str::from_utf8(&buffer[..end]) {
+                Ok(_) => carry = 0,
+                Err(error) if error.error_len().is_none() => {
+                    // A UTF-8 character can straddle reads. Hash each byte only on its first read.
+                    carry = end - error.valid_up_to();
+                    buffer.copy_within(error.valid_up_to()..end, 0);
+                }
+                Err(_) => {
+                    check_utf8 = false;
+                    carry = 0;
+                }
+            }
+        }
+    }
+    let id = if let Some(id) = known_encoding {
+        id
+    } else if check_utf8 && carry == 0 {
+        "utf-8"
+    } else {
+        let sample = sample_text_bytes(&mut file, size)?;
+        select_encoding_from_sample(&sample)
+            .ok_or_else(|| io::Error::other("Unable to decode text file"))?
+            .0
+    };
+    Ok((format!("{:x}", hasher.finalize()), id))
 }
 
 fn decode_import_source(bytes: Vec<u8>, encoding: Option<&str>) -> (DecodedText, Option<Vec<u8>>) {
@@ -1094,7 +1195,7 @@ pub(super) fn create_text_import_preview_from_prepared(
     rules: Option<&TextImportRulesInput>,
 ) -> TextImportPreview {
     let text = &prepared.decoded.text;
-    let chapters = parse_text_import_document(text, &prepared.fallback_title, rules).chapters;
+    let chapters = parse_text_import_document(text, &prepared.source.fallback_title, rules).chapters;
     let sample: String = text
         .lines()
         .map(str::trim)
@@ -1113,10 +1214,10 @@ pub(super) fn create_text_import_preview_from_prepared(
     };
 
     TextImportPreview {
-        path: path_to_client_string(&prepared.path),
-        filename: prepared.filename.clone(),
-        title: prepared.fallback_title.clone(),
-        creator: prepared.fallback_creator.clone(),
+        path: path_to_client_string(&prepared.source.path),
+        filename: prepared.source.filename.clone(),
+        title: prepared.source.fallback_title.clone(),
+        creator: prepared.source.fallback_creator.clone(),
         encoding: prepared.decoded.encoding.clone(),
         encoding_label: prepared.decoded.encoding_label.clone(),
         confidence: match prepared.decoded.confidence {
@@ -1149,9 +1250,9 @@ pub(super) fn should_skip_prepared_text_import_preview(
     Ok(state.library.books.iter().any(|book| {
         book.scope == BookScope::Library
             && !has_unexported_book_changes(book)
-            && same_source_path(&book.source_path, &prepared.path)
+            && same_source_path(&book.source_path, &prepared.source.path)
             && !book.source_hash.is_empty()
-            && book.source_hash == prepared.hash
+            && book.source_hash == prepared.source.hash
     }))
 }
 
@@ -1162,16 +1263,54 @@ pub(super) fn prepare_text_import(
     encoding: Option<&str>,
     rules: Option<&TextImportRulesInput>,
 ) -> Result<Arc<PreparedTextImport>, String> {
+    run_text_prepare(storage, tasks, path, encoding, rules, TaskKind::TxtPreview, |key| {
+        prepare_text_import_entry(path, encoding, rules, key)
+    })
+}
+
+pub(super) fn prepare_text_selection(
+    storage: &AppStorage,
+    tasks: &TaskService,
+    path: &Path,
+    encoding: Option<&str>,
+    rules: Option<&TextImportRulesInput>,
+    copy_source_file: bool,
+) -> Result<PreparedTextSelection, String> {
+    let materialize = eager_import_materialization_enabled();
+    if copy_source_file || materialize {
+        let document = prepare_text_import(storage, tasks, path, encoding, rules)?;
+        if document.decoded.confidence == TextEncodingConfidence::Failed {
+            return Err("Unable to decode text file".to_string());
+        }
+        return Ok(PreparedTextSelection::Document {
+            document,
+            source_storage: copy_source_file.into(),
+            materialize,
+        });
+    }
+    run_text_prepare(storage, tasks, path, encoding, rules, TaskKind::TxtReference, |key| {
+        let (hash, id) = scan_referenced_text(path, encoding).map_err(|error| error.to_string())?;
+        prepared_text_source(path, encoding, rules, key, hash, id).map(Arc::new)
+    })
+    .map(PreparedTextSelection::Referenced)
+}
+
+fn run_text_prepare<T: Clone + Send + Sync + 'static>(
+    storage: &AppStorage,
+    tasks: &TaskService,
+    path: &Path,
+    encoding: Option<&str>,
+    rules: Option<&TextImportRulesInput>,
+    kind: TaskKind,
+    prepare: impl FnOnce(TextImportPreparedKey) -> Result<T, String>,
+) -> Result<T, String> {
     let key = text_import_prepared_key(path, encoding, rules)?;
-    let path = path.to_path_buf();
-    let encoding = encoding.map(str::to_string);
-    let rules = rules.cloned();
-    let task_key = TaskKey::new(TaskKind::TxtPreview, key.task_identity().to_string());
+    let task_key = TaskKey::new(kind, key.task_identity().to_string());
     tasks.get_or_run(task_key, TaskPriority::Foreground, move || {
         tasks.run_cpu(TaskPriority::Foreground, || {
             storage.note_text_import_prepare_run();
             storage.begin_text_import_prepare();
-            let prepared = prepare_text_import_entry(&path, encoding.as_deref(), rules.as_ref(), key);
+            let prepared = prepare(key);
             storage.end_text_import_prepare();
             prepared
         })
@@ -1688,9 +1827,8 @@ fn escape_svg(value: &str) -> String {
 pub(super) fn import_text_path_impl(
     storage: &AppStorage,
     tasks: &TaskService,
-    prepared: Arc<PreparedTextImport>,
+    prepared: PreparedTextSelection,
     import: &TextImportSelection,
-    copy_source_file: bool,
     rules: Option<&TextImportRulesInput>,
     import_index: Option<&mut BookImportLookupIndex>,
 ) -> Result<Option<(BookRecord, ImportFinalizer)>, String> {
@@ -1699,7 +1837,9 @@ pub(super) fn import_text_path_impl(
     } else {
         None
     };
-    let id = import_support::import_book_id(storage, import_index.as_deref(), &prepared.path, &prepared.hash)?;
+    let source = prepared.source();
+    let id = import_support::import_book_id(storage, import_index.as_deref(), &source.path, &source.hash)?;
+    let size = source.size;
     tasks.run_book_exclusive(&id, TaskPriority::Foreground, || {
         let _cache_flush_guard = storage
             .inner
@@ -1707,38 +1847,33 @@ pub(super) fn import_text_path_impl(
             .lock()
             .map_err(|_| "derived cache flush lock poisoned".to_string())?;
         // A reader can hold the book lock while waiting for an I/O permit.
-        tasks.run_io_observed(storage.root(), prepared.size, TaskPriority::Foreground, || {
-            import_text_path_locked(storage, prepared, import, copy_source_file, rules, import_index)
+        tasks.run_io_observed(storage.root(), size, TaskPriority::Foreground, || {
+            import_text_path_locked(storage, prepared, import, rules, import_index)
         })
     })
 }
 
 fn import_text_path_locked(
     storage: &AppStorage,
-    prepared: Arc<PreparedTextImport>,
+    prepared: PreparedTextSelection,
     import: &TextImportSelection,
-    copy_source_file: bool,
     rules: Option<&TextImportRulesInput>,
     mut import_index: Option<&mut BookImportLookupIndex>,
 ) -> Result<Option<(BookRecord, ImportFinalizer)>, String> {
     fs::create_dir_all(books_root(storage.root())).map_err(|error| error.to_string())?;
 
-    let path = &prepared.path;
+    let source = prepared.source();
+    let path = &source.path;
     let source_path = path.to_path_buf();
-    let source_storage = if copy_source_file {
-        SourceStorage::Managed
-    } else {
-        SourceStorage::Referenced
+    let source_storage = match &prepared {
+        PreparedTextSelection::Referenced(_) => SourceStorage::Referenced,
+        PreparedTextSelection::Document { source_storage, .. } => *source_storage,
     };
-    let decoded = &prepared.decoded;
-    if decoded.confidence == TextEncodingConfidence::Failed {
-        return Err("Unable to decode text file".to_string());
-    }
 
-    let hash = prepared.hash.clone();
-    let size = prepared.size;
-    let name = prepared.filename.clone();
-    let fallback_title = prepared.fallback_title.clone();
+    let hash = source.hash.clone();
+    let size = source.size;
+    let name = source.filename.clone();
+    let fallback_title = source.fallback_title.clone();
     let title = import
         .title
         .as_deref()
@@ -1750,12 +1885,12 @@ fn import_text_path_locked(
         .creator
         .as_deref()
         .map(|creator| creator.trim().to_string())
-        .unwrap_or_else(|| prepared.fallback_creator.clone());
+        .unwrap_or_else(|| source.fallback_creator.clone());
 
     let metadata = json!({
         "title": title,
         "creator": creator,
-        "sourceEncodingId": decoded.encoding,
+        "sourceEncodingId": source.encoding,
     });
 
     let (mut book, id, should_copy, adopt_source_only, is_new) = {
@@ -1791,7 +1926,7 @@ fn import_text_path_locked(
             book.source_storage = source_storage;
             book.source_path = source_path.clone();
             book.updated_at = Some(now_ms());
-            book.metadata["sourceEncodingId"] = Value::String(decoded.encoding.clone());
+            book.metadata["sourceEncodingId"] = Value::String(source.encoding.clone());
             let id = book.id.clone();
             (book, id, true, false, false)
         } else if matches!(existing, Some(ExistingBookImport::Skip)) {
@@ -1840,18 +1975,22 @@ fn import_text_path_locked(
         if should_copy {
             storage.remove_derived_memory_cache_data(&id);
             file_transaction = Some(ImportFileTransaction::begin(storage, &id)?);
-            let dir = storage.book_dir(&id);
-            let source_text_path = dir.join(SOURCE_TEXT_FILE);
-            if source_storage == SourceStorage::Managed {
-                fs::write(
-                    &source_text_path,
-                    prepared.original_bytes.as_deref().unwrap_or(decoded.text.as_bytes()),
-                )
-                .map_err(|error| error.to_string())?;
-            }
             let cover = create_text_cover_input(&effective_metadata, path.file_stem().and_then(|name| name.to_str()));
-            if eager_import_materialization_enabled() {
-                materialize_text_publication(storage, &id, &prepared, &effective_metadata, rules, cover.as_ref())?;
+            if let PreparedTextSelection::Document {
+                document, materialize, ..
+            } = &prepared
+            {
+                if source_storage == SourceStorage::Managed {
+                    let bytes = document
+                        .original_bytes
+                        .as_deref()
+                        .unwrap_or(document.decoded.text.as_bytes());
+                    fs::write(storage.book_dir(&id).join(SOURCE_TEXT_FILE), bytes)
+                        .map_err(|error| error.to_string())?;
+                }
+                if *materialize {
+                    materialize_text_publication(storage, &id, document, &effective_metadata, rules, cover.as_ref())?;
+                }
             }
             write_cover(storage, &id, cover)?;
         }
