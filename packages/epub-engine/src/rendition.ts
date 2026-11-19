@@ -822,9 +822,7 @@ class Rendition extends EventEmitter<RenditionEvents> {
                     return
                   }
 
-                  this.book.resources?.imageResources?.commit(
-                    this.manager.views.displayed().map((view) => view.getImageResourceLease()),
-                  )
+                  this.book.resources?.imageResources?.commitDisplayedViews(this.manager.views.all())
                   this.location = located
 
                   /**

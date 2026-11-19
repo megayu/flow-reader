@@ -8,6 +8,7 @@ interface Resource {
   source: string
   refs: number
   loading: number
+  seenInCommit: boolean
   controller: AbortController
   ready: Promise<void>
   url?: string
@@ -24,6 +25,11 @@ export interface ImageResourceLease {
   serialize(render: () => string): string
   loaded(): void
   release(): void
+}
+
+interface ImageResourceView {
+  readonly displayed: boolean
+  getImageResourceLease(): ImageResourceLease | undefined
 }
 
 /** Recover the authored resource for previews, downloads and image matching. */
@@ -44,7 +50,8 @@ function candidateKey(source: string) {
 
 export class ImageResourceScope {
   private readonly resources = new Map<string, Resource>()
-  private chapter = new Set<Resource>()
+  private readonly chapter = new Set<Resource>()
+  private readonly committedViewLeases: ImageResourceLease[] = []
   private readonly candidates: Set<string>
   private backgroundSince?: number
   private closed = false
@@ -72,23 +79,51 @@ export class ImageResourceScope {
     if (--resource.refs === 0 && !this.chapter.has(resource)) this.dispose(resource)
   }
 
+  commitDisplayedViews(views: readonly ImageResourceView[]) {
+    const leases = this.committedViewLeases
+    let count = 0
+    let changed = false
+    for (const view of views) {
+      if (!view.displayed) continue
+      const lease = view.getImageResourceLease()
+      if (!lease?.images.size) continue
+      if (leases[count] !== lease) {
+        leases[count] = lease
+        changed = true
+      }
+      count++
+    }
+    // Displayed views have finished borrowing. A page turn within the same
+    // views keeps the same leases until those views are replaced or released.
+    if (!changed && count === leases.length && (count || this.chapter.size === 0)) return
+    leases.length = count
+    this.commit(leases)
+  }
+
   commit(leases: Iterable<ImageResourceLease | undefined>) {
-    const next = new Set<Resource>()
+    if (leases !== this.committedViewLeases) this.committedViewLeases.length = 0
     for (const lease of leases) {
       if (!lease) continue
       for (const { resource } of lease.images.values()) {
-        if (resource && !resource.controller.signal.aborted) next.add(resource)
+        if (!resource || resource.seenInCommit || resource.controller.signal.aborted) continue
+        resource.seenInCommit = true
+        this.chapter.add(resource)
       }
     }
     for (const resource of this.chapter) {
-      if (!next.has(resource) && resource.refs === 0) this.dispose(resource)
+      if (resource.seenInCommit) {
+        resource.seenInCommit = false
+        continue
+      }
+      this.chapter.delete(resource)
+      if (resource.refs === 0) this.dispose(resource)
     }
-    this.chapter = next
   }
 
   updateForeground(foreground: boolean, now: number) {
     if (this.backgroundSince !== undefined && now - this.backgroundSince > BACKGROUND_EXPIRY_MS) {
       this.chapter.clear()
+      this.committedViewLeases.length = 0
       for (const resource of this.resources.values()) {
         if (resource.url && resource.loading) {
           // Keep an assigned URL usable until the iframe load settles, but
@@ -121,7 +156,14 @@ export class ImageResourceScope {
     let resource = this.resources.get(source)
     if (resource?.controller.signal.aborted) return
     if (!resource) {
-      resource = { source, refs: 0, loading: 0, controller: new AbortController(), ready: Promise.resolve() }
+      resource = {
+        source,
+        refs: 0,
+        loading: 0,
+        seenInCommit: false,
+        controller: new AbortController(),
+        ready: Promise.resolve(),
+      }
       this.resources.set(source, resource)
       resource.ready = this.load(source, resource)
     }
@@ -217,6 +259,7 @@ export class ImageResourceScope {
   destroy() {
     this.closed = true
     this.chapter.clear()
+    this.committedViewLeases.length = 0
     for (const resource of this.resources.values()) this.dispose(resource)
   }
 }
