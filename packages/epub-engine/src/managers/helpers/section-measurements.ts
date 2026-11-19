@@ -66,7 +66,11 @@ export default class SectionMeasurements {
     delete this.pageCounts[this.layoutKey(section)]
   }
 
-  async count(section: Section | null | undefined) {
+  async count(
+    section: Section | null | undefined,
+    retainView?: (view: IframeView) => boolean,
+    placement: 'append' | 'prepend' = 'append',
+  ) {
     const manager = this.manager
     if (!section) {
       return 0
@@ -78,9 +82,9 @@ export default class SectionMeasurements {
       return this.cacheView(existing)
     }
 
-    let key = this.layoutKey(section)
-    if (this.pageCounts[key]) {
-      return this.pageCounts[key]
+    if (!retainView) {
+      const cached = this.pageCounts[this.layoutKey(section)]
+      if (cached) return cached
     }
 
     const pageCount = await this.withView(
@@ -92,6 +96,8 @@ export default class SectionMeasurements {
         console.warn('Skipping unavailable reflowable section', section.href, error)
         return 0
       },
+      retainView && ((view, pages) => pages > 0 && retainView(view)),
+      placement,
     )
     return pageCount ?? 0
   }
@@ -100,6 +106,8 @@ export default class SectionMeasurements {
     section: Section,
     callback: (view: IframeView) => Result,
     onMeasurementError?: (error: unknown) => Awaited<Result>,
+    retainView?: (view: IframeView, result: Awaited<Result>) => boolean,
+    placement: 'append' | 'prepend' = 'append',
   ): Promise<Result | undefined> {
     const manager = this.manager
     if (!manager || manager.destroyed) return
@@ -108,29 +116,39 @@ export default class SectionMeasurements {
       return callback(existing)
     }
 
+    const views = manager.views
     let scrollLeft = manager.container ? manager.container.scrollLeft : 0
     let view = manager.createView(section)
     view.element.style.visibility = 'hidden'
     view.iframe && (view.iframe.style.visibility = 'hidden')
 
-    view.on(EVENTS.VIEWS.AXIS, (axis) => {
+    const updateAxis = (axis: string) => {
       manager.updateAxis(axis)
-    })
+    }
+    view.on(EVENTS.VIEWS.AXIS, updateAxis)
 
     // Measurement can cross writing modes. The visible view still owns the
     // manager's writing mode, so listen only for axis changes here.
-    manager.views.append(view)
+    // A preceding chapter must not push the visible pages sideways while loading.
+    if (placement === 'prepend') view.element.style.position = 'absolute'
+    views[placement](view)
 
+    let retained = false
     try {
       await view.display(manager.request)
       if (manager.destroyed) return
-      return await callback(view)
+      const result = await callback(view)
+      retained = retainView?.(view, result) ?? false
+      return result
     } catch (error) {
       if (!onMeasurementError) throw error
       return onMeasurementError(error)
     } finally {
-      manager.views.remove(view)
-      if (!manager.destroyed) manager.scrollTo(scrollLeft, 0, true)
+      if (retained) view.off(EVENTS.VIEWS.AXIS, updateAxis)
+      else views.remove(view)
+      if (!manager.destroyed && manager.views === views) {
+        manager.scrollTo(scrollLeft, 0, true)
+      }
     }
   }
 

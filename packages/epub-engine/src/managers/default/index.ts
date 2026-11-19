@@ -17,6 +17,7 @@ export interface ReaderSpread {
   exact?: boolean
 }
 type SpreadSlot = 'left' | 'right'
+type CountAdjacentSection = (section: Section) => Promise<number>
 type PrePaginatedSpread = { left?: Section | null; right?: Section | null }
 type Size = { width: number; height: number }
 type Bounds = ReturnType<typeof windowBounds>
@@ -613,10 +614,15 @@ class DefaultViewManager extends EventEmitter<ManagerEvents> {
     )
   }
 
-  async firstReflowablePageAfterSection(section: Section) {
+  async firstReflowablePageAfterSection(
+    section: Section,
+    countNext?: CountAdjacentSection,
+  ) {
     let next = section && section.next && section.next()
     while (next) {
-      let pageCount = await this.sectionMeasurements.count(next)
+      let pageCount = await (countNext
+        ? countNext(next)
+        : this.sectionMeasurements.count(next))
       if (pageCount) {
         return this.reflowablePage(next, 0)
       }
@@ -624,10 +630,15 @@ class DefaultViewManager extends EventEmitter<ManagerEvents> {
     }
   }
 
-  async lastReflowablePageBeforeSection(section: Section) {
+  async lastReflowablePageBeforeSection(
+    section: Section,
+    countPrevious?: CountAdjacentSection,
+  ) {
     let prev = section && section.prev && section.prev()
     while (prev) {
-      let pageCount = await this.sectionMeasurements.count(prev)
+      let pageCount = await (countPrevious
+        ? countPrevious(prev)
+        : this.sectionMeasurements.count(prev))
       if (pageCount) {
         return this.reflowablePage(prev, pageCount - 1)
       }
@@ -638,6 +649,7 @@ class DefaultViewManager extends EventEmitter<ManagerEvents> {
   async reflowablePageAfterRenderedLeft(
     left: ReaderPage | undefined,
     leftPageCount: number,
+    countNext?: CountAdjacentSection,
   ) {
     if (!left || !leftPageCount) {
       return
@@ -647,12 +659,13 @@ class DefaultViewManager extends EventEmitter<ManagerEvents> {
       return this.reflowablePage(left.section, left.pageIndex + 1)
     }
 
-    return this.firstReflowablePageAfterSection(left.section)
+    return this.firstReflowablePageAfterSection(left.section, countNext)
   }
 
   async reflowablePageBeforeRenderedRight(
     right: ReaderPage | undefined,
     rightPageCount: number,
+    countPrevious?: CountAdjacentSection,
   ) {
     if (!right || !rightPageCount) {
       return
@@ -662,7 +675,7 @@ class DefaultViewManager extends EventEmitter<ManagerEvents> {
       return this.reflowablePage(right.section, right.pageIndex - 1)
     }
 
-    return this.lastReflowablePageBeforeSection(right.section)
+    return this.lastReflowablePageBeforeSection(right.section, countPrevious)
   }
 
   renderedReflowablePageCount(section: Section | undefined) {
@@ -670,24 +683,30 @@ class DefaultViewManager extends EventEmitter<ManagerEvents> {
     return view ? this.sectionMeasurements.cacheView(view) : 0
   }
 
-  async nextReflowablePageFromRendered(address: ReaderPage | undefined) {
-    let pageCount = this.renderedReflowablePageCount(address && address.section)
+  async nextReflowablePageFromRendered(
+    address: ReaderPage | undefined,
+    pageCount: number,
+    countNext?: CountAdjacentSection,
+  ) {
     if (pageCount) {
       address = this.clampReflowablePageToCount(address, pageCount)
-      return this.reflowablePageAfterRenderedLeft(address, pageCount)
+      return this.reflowablePageAfterRenderedLeft(address, pageCount, countNext)
     }
 
-    return this.nextReflowablePage(address)
+    return this.nextReflowablePage(address, countNext)
   }
 
-  async previousReflowablePageFromRendered(address: ReaderPage | undefined) {
+  async previousReflowablePageFromRendered(
+    address: ReaderPage | undefined,
+    countPrevious?: CountAdjacentSection,
+  ) {
     let pageCount = this.renderedReflowablePageCount(address && address.section)
     if (pageCount) {
       address = this.clampReflowablePageToCount(address, pageCount)
-      return this.reflowablePageBeforeRenderedRight(address, pageCount)
+      return this.reflowablePageBeforeRenderedRight(address, pageCount, countPrevious)
     }
 
-    return this.previousReflowablePage(address)
+    return this.previousReflowablePage(address, countPrevious)
   }
 
   async reflowablePageForTarget(section: Section, target?: string) {
@@ -787,7 +806,10 @@ class DefaultViewManager extends EventEmitter<ManagerEvents> {
     )
   }
 
-  async nextReflowablePage(address: ReaderPage | undefined) {
+  async nextReflowablePage(
+    address: ReaderPage | undefined,
+    countNext?: CountAdjacentSection,
+  ) {
     address = await this.normalizeReflowablePage(address)
     if (!address) {
       return
@@ -798,17 +820,13 @@ class DefaultViewManager extends EventEmitter<ManagerEvents> {
       return this.reflowablePage(address.section, address.pageIndex + 1)
     }
 
-    let next = address.section.next && address.section.next()
-    while (next) {
-      let nextPageCount = await this.sectionMeasurements.count(next)
-      if (nextPageCount) {
-        return this.reflowablePage(next, 0)
-      }
-      next = next.next && next.next()
-    }
+    return this.firstReflowablePageAfterSection(address.section, countNext)
   }
 
-  async previousReflowablePage(address: ReaderPage | undefined) {
+  async previousReflowablePage(
+    address: ReaderPage | undefined,
+    countPrevious?: CountAdjacentSection,
+  ) {
     address = await this.normalizeReflowablePage(address)
     if (!address) {
       return
@@ -818,21 +836,15 @@ class DefaultViewManager extends EventEmitter<ManagerEvents> {
       return this.reflowablePage(address.section, address.pageIndex - 1)
     }
 
-    let prev = address.section.prev && address.section.prev()
-    while (prev) {
-      let pageCount = await this.sectionMeasurements.count(prev)
-      if (pageCount) {
-        return this.reflowablePage(prev, pageCount - 1)
-      }
-      prev = prev.prev && prev.prev()
-    }
+    return this.lastReflowablePageBeforeSection(address.section, countPrevious)
   }
 
   async reflowableSpreadFromLeft(
     left?: ReaderPage,
+    countNext?: CountAdjacentSection,
   ): Promise<ReaderSpread | undefined> {
     if (this.isRightFirstPagination()) {
-      return this.reflowableSpreadFromEarlier(left)
+      return this.reflowableSpreadFromEarlier(left, countNext)
     }
 
     left = await this.normalizeReflowablePage(left)
@@ -842,13 +854,14 @@ class DefaultViewManager extends EventEmitter<ManagerEvents> {
 
     return {
       left,
-      right: await this.nextReflowablePage(left),
+      right: await this.nextReflowablePage(left, countNext),
       anchor: 'left',
     }
   }
 
   async reflowableSpreadFromEarlier(
     earlier?: ReaderPage,
+    countNext?: CountAdjacentSection,
   ): Promise<ReaderSpread | undefined> {
     earlier = await this.normalizeReflowablePage(earlier)
     if (!earlier) {
@@ -857,7 +870,7 @@ class DefaultViewManager extends EventEmitter<ManagerEvents> {
 
     let later
     if (this.layout.divisor > 1) {
-      later = await this.nextReflowablePage(earlier)
+      later = await this.nextReflowablePage(earlier, countNext)
     }
 
     let properties
@@ -873,6 +886,7 @@ class DefaultViewManager extends EventEmitter<ManagerEvents> {
 
   async reflowableSpreadEndingAt(
     right?: ReaderPage,
+    countPrevious?: CountAdjacentSection,
   ): Promise<ReaderSpread | undefined> {
     if (this.isRightFirstPagination()) {
       right = await this.normalizeReflowablePage(right)
@@ -885,7 +899,7 @@ class DefaultViewManager extends EventEmitter<ManagerEvents> {
       }
 
       return this.reflowableSpreadFromLogicalPages(
-        await this.previousReflowablePage(right),
+        await this.previousReflowablePage(right, countPrevious),
         right,
       )
     }
@@ -896,7 +910,7 @@ class DefaultViewManager extends EventEmitter<ManagerEvents> {
     }
 
     return {
-      left: await this.previousReflowablePage(right),
+      left: await this.previousReflowablePage(right, countPrevious),
       right,
       anchor: 'right',
     }
@@ -1148,6 +1162,33 @@ class DefaultViewManager extends EventEmitter<ManagerEvents> {
     this.applyReflowableSpreadPosition(resolvedSpread, viewBySectionIndex)
   }
 
+  private async resolveRightFirstSectionEnd(
+    spread: ReaderSpread,
+    countPrevious?: CountAdjacentSection,
+  ) {
+    let terminalSlot: SpreadSlot = spread.left ? 'left' : 'right'
+    let terminalPage = spread[terminalSlot]
+    let terminalPageCount = await this.sectionMeasurements.count(
+      terminalPage!.section,
+    )
+    terminalPage = this.reflowablePage(
+      terminalPage!.section,
+      Math.max(terminalPageCount - 1, 0),
+    )
+
+    if (terminalSlot === 'left') {
+      spread.left = terminalPage
+      spread.right =
+        this.layout.divisor > 1
+          ? await this.previousReflowablePage(terminalPage, countPrevious)
+          : undefined
+    } else {
+      spread.right = terminalPage
+      spread.left = undefined
+    }
+    spread.anchor = terminalSlot
+  }
+
   async renderRightFirstReflowableSpread(spread?: ReaderSpread) {
     let resolvedSpread = { ...spread }
     let viewBySectionIndex: Record<number, IframeView> = {}
@@ -1172,27 +1213,7 @@ class DefaultViewManager extends EventEmitter<ManagerEvents> {
     }
 
     if (resolvedSpread.endsAtSectionEnd) {
-      let terminalSlot: SpreadSlot = resolvedSpread.left ? 'left' : 'right'
-      let terminalPage = resolvedSpread[terminalSlot]
-      let terminalPageCount = await this.sectionMeasurements.count(
-        terminalPage!.section,
-      )
-      terminalPage = this.reflowablePage(
-        terminalPage!.section,
-        Math.max(terminalPageCount - 1, 0),
-      )
-
-      if (terminalSlot === 'left') {
-        resolvedSpread.left = terminalPage
-        resolvedSpread.right =
-          this.layout.divisor > 1
-            ? await this.previousReflowablePage(terminalPage)
-            : undefined
-      } else {
-        resolvedSpread.right = terminalPage
-        resolvedSpread.left = undefined
-      }
-      resolvedSpread.anchor = terminalSlot
+      await this.resolveRightFirstSectionEnd(resolvedSpread)
     }
 
     let rightPageCount
@@ -1425,15 +1446,20 @@ class DefaultViewManager extends EventEmitter<ManagerEvents> {
     let current =
       this.reflowableSpreadLaterPage(spread) ||
       this.reflowableSpreadEarlierPage(spread)
-    let nextEarlier = await this.nextReflowablePageFromRendered(current)
-    if (!nextEarlier) {
-      this.views.show()
+    const pageCount = this.renderedReflowablePageCount(current?.section)
+
+    if (
+      current &&
+      pageCount > 0 &&
+      current.pageIndex >= pageCount - this.layout.divisor &&
+      (await this.tryPrepareAdjacentSpread(current, 'append', (count) =>
+        this.resolveNextReflowableSpread(current, pageCount, count),
+      ))
+    ) {
       return
     }
 
-    let nextSpread = this.isRightFirstPagination()
-      ? await this.reflowableSpreadFromEarlier(nextEarlier)
-      : await this.reflowableSpreadFromLeft(nextEarlier)
+    let nextSpread = await this.resolveNextReflowableSpread(current, pageCount)
     if (!nextSpread) {
       this.views.show()
       return
@@ -1446,6 +1472,96 @@ class DefaultViewManager extends EventEmitter<ManagerEvents> {
     return this.renderReflowableSpread(nextSpread)
   }
 
+  private async resolveNextReflowableSpread(
+    current: ReaderPage | undefined,
+    pageCount: number,
+    countNext?: CountAdjacentSection,
+  ) {
+    const next = await this.nextReflowablePageFromRendered(
+      current,
+      pageCount,
+      countNext,
+    )
+    if (!next) return
+    return this.isRightFirstPagination()
+      ? this.reflowableSpreadFromEarlier(next, countNext)
+      : this.reflowableSpreadFromLeft(next, countNext)
+  }
+
+  private async tryPrepareAdjacentSpread(
+    current: ReaderPage,
+    placement: 'append' | 'prepend',
+    resolveSpread: (count: CountAdjacentSection) => Promise<ReaderSpread | undefined>,
+  ) {
+    const prepared: IframeView[] = []
+    const views = this.views
+    const committedSpread = this.currentReflowableSpread
+    const layoutKey = this.sectionMeasurements.layoutKey(current.section)
+    const isCurrent = () =>
+      !this.destroyed &&
+      this.views === views &&
+      this.currentReflowableSpread === committedSpread &&
+      this.sectionMeasurements.layoutKey(current.section) === layoutKey
+    const countAdjacent: CountAdjacentSection = (section) =>
+      this.sectionMeasurements.count(
+        section,
+        (view) => {
+          if (
+            !isCurrent() ||
+            view.writingMode !== this.writingMode ||
+            !this.viewMatchesCurrentLayoutStyle(view)
+          ) {
+            return false
+          }
+          prepared.push(view)
+          return true
+        },
+        placement,
+      )
+
+    let applied = false
+    try {
+      const spread = await resolveSpread(countAdjacent)
+      if (!isCurrent()) return true
+      if (!spread || !prepared.length) return false
+      if (spread.endsAtSectionEnd && this.isRightFirstPagination()) {
+        await this.resolveRightFirstSectionEnd(spread, countAdjacent)
+        if (!isCurrent()) return true
+      }
+      const rendered = this.renderedViewsForReflowableSpread(spread)
+      if (!rendered) return false
+      const left = spread.left && rendered[spread.left.section.index]
+      const right = spread.right && rendered[spread.right.section.index]
+      if (
+        (left && left.writingMode !== this.writingMode) ||
+        (right && right.writingMode !== this.writingMode)
+      ) {
+        return false
+      }
+      // Prepared views are already mounted in spine order. Moving an
+      // iframe to reorder it would reload its document on some WebViews.
+      if (left && right && left !== right) {
+        const leftPrecedesRight = views.indexOf(left) < views.indexOf(right)
+        if (leftPrecedesRight === this.isRightFirstPagination()) return false
+      }
+
+      this.trimRenderedViewsToReflowableSpread(spread)
+      for (const view of prepared) {
+        if (views.indexOf(view) === -1) continue
+        if (placement === 'prepend') view.element.style.position = 'relative'
+        this.watchView(view)
+        this.afterDisplayed(view)
+      }
+      this.applyReflowableSpreadPosition(spread, rendered)
+      applied = true
+      return true
+    } finally {
+      if (!applied) {
+        for (const view of prepared) views.remove(view)
+      }
+    }
+  }
+
   async previousReflowableSpread() {
     let spread = this.currentReflowableSpread
     if (!spread) {
@@ -1453,23 +1569,20 @@ class DefaultViewManager extends EventEmitter<ManagerEvents> {
     }
 
     let current = this.reflowableSpreadEarlierPage(spread)
-    let previousPage = await this.previousReflowablePageFromRendered(current)
-    if (!previousPage) {
-      this.views.show()
+    if (
+      current &&
+      current.pageIndex < this.layout.divisor &&
+      (await this.tryPrepareAdjacentSpread(current, 'prepend', (count) =>
+        this.resolvePreviousReflowableSpread(current, count),
+      ))
+    ) {
       return
     }
 
-    let previousSpread =
-      this.isRightFirstPagination() && this.layout.divisor <= 1
-        ? await this.reflowableSpreadFromEarlier(previousPage)
-        : await this.reflowableSpreadEndingAt(previousPage)
+    const previousSpread = await this.resolvePreviousReflowableSpread(current)
     if (!previousSpread) {
       this.views.show()
       return
-    }
-
-    if (current && !this.sameReflowableSection(current, previousPage)) {
-      previousSpread.endsAtSectionEnd = true
     }
 
     if (this.tryApplyRenderedReflowableSpread(previousSpread)) {
@@ -1477,6 +1590,29 @@ class DefaultViewManager extends EventEmitter<ManagerEvents> {
     }
 
     return this.renderReflowableSpread(previousSpread)
+  }
+
+  private async resolvePreviousReflowableSpread(
+    current: ReaderPage | undefined,
+    countPrevious?: CountAdjacentSection,
+  ) {
+    const previousPage = await this.previousReflowablePageFromRendered(
+      current,
+      countPrevious,
+    )
+    if (!previousPage) return
+
+    let previousSpread =
+      this.isRightFirstPagination() && this.layout.divisor <= 1
+        ? await this.reflowableSpreadFromEarlier(previousPage)
+        : await this.reflowableSpreadEndingAt(previousPage, countPrevious)
+    if (!previousSpread) return
+
+    if (current && !this.sameReflowableSection(current, previousPage)) {
+      previousSpread.endsAtSectionEnd = true
+    }
+
+    return previousSpread
   }
 
   reflowableSpreadFromVisible() {
@@ -1750,7 +1886,7 @@ class DefaultViewManager extends EventEmitter<ManagerEvents> {
     return this.displayNewView(view)
   }
 
-  private async displayNewView(view: IframeView) {
+  private watchView(view: IframeView) {
     view.onDisplayed = this.afterDisplayed.bind(this)
     view.onResize = this.afterResized.bind(this)
 
@@ -1761,7 +1897,10 @@ class DefaultViewManager extends EventEmitter<ManagerEvents> {
     view.on(EVENTS.VIEWS.WRITING_MODE, (mode) => {
       this.updateWritingMode(mode)
     })
+  }
 
+  private async displayNewView(view: IframeView) {
+    this.watchView(view)
     try {
       return await view.display(this.request)
     } catch (error) {
