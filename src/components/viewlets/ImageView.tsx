@@ -34,6 +34,9 @@ const IMAGE_LIST_OVERSCAN = 6
 const IMAGE_LIST_TOP_PADDING = 4
 const IMAGE_SECTION_ESTIMATED_THUMBNAIL_HEIGHT = 180
 const EMPTY_IMAGE_SECTIONS: ISection[] = []
+// The entries themselves live on the sections. Reopening the pane only needs to
+// know whether this exact spine already received the current book's index.
+const appliedImageIndexes = new WeakMap<ISection[], Pick<BookImageIndexCache, 'revision' | 'sourceRevision'>>()
 
 type ImageDisplayMode = 'illustrations' | 'all'
 type ImageIndexStatus = 'error' | 'loading' | 'ready'
@@ -132,9 +135,11 @@ function createImageAssetLookup(
   }
 }
 
-function applyImageIndexCache(tab: typeof reader.focusedBookTab, sections: ISection[], cache: BookImageIndexCache) {
-  if (!tab) return false
-
+function applyImageIndexCache(
+  tab: NonNullable<typeof reader.focusedBookTab>,
+  sections: ISection[],
+  cache: BookImageIndexCache,
+) {
   const matchedSections = cache.sections.map((cachedSection) => {
     const indexedSection = sections[cachedSection.index]
     return indexedSection?.href === cachedSection.href
@@ -160,7 +165,7 @@ function applyImageIndexCache(tab: typeof reader.focusedBookTab, sections: ISect
     section.navitem ??= tab.mapSectionToNavItem(section.href)
   })
 
-  return cache.sections.length > 0
+  return true
 }
 
 function sectionKey(section: ISection) {
@@ -260,37 +265,37 @@ const ImagePane: React.FC<ImagePaneProps> = ({ mode, onModeChange }) => {
   const [expandedKeys, { reset: resetExpandedKeys, toggle: toggleSection }] = useStringSet()
   const [imageIndexStatus, setImageIndexStatus] = useState<ImageIndexStatus>('loading')
   const [imageIndexRetryCount, setImageIndexRetryCount] = useState(0)
-  const [, setImageScanRevision] = useState(0)
   const liveSections = (tab?.sections as ISection[] | undefined) ?? EMPTY_IMAGE_SECTIONS
   const snapshotSections = focusedBookTab?.sections as ISection[] | undefined
   const canLoadImages = action === 'image' && !!snapshotSections
+  const revision = tab?.book.revision
+  const sourceRevision = tab?.book.sourceRevision
+  const appliedIndex = appliedImageIndexes.get(liveSections)
+  const indexReady =
+    !!appliedIndex && appliedIndex.revision === revision && appliedIndex.sourceRevision === sourceRevision
   const imageAssetLookup = useMemo(() => {
     const epub = tab?.epub
     return createImageAssetLookup(epub?.resources, epub ? (href) => epub.resolve(href) : undefined)
   }, [tab?.epub])
 
   useEffect(() => {
-    if (!canLoadImages || !liveSections.length || !tab) return
+    if (!canLoadImages || !liveSections.length || !tab || indexReady) return
 
     let cancelled = false
-    const revision = tab.book.revision
     setImageIndexStatus('loading')
 
     void loadBookImageIndex(tab.book.id)
       .then((cache) => {
         if (cancelled || reader.focusedBookTab !== tab) return
-        if (cache.revision !== revision) {
+        if (cache.revision !== revision || cache.sourceRevision !== sourceRevision) {
           setImageIndexStatus('error')
           return
         }
-        const applied = applyImageIndexCache(tab, liveSections, cache)
-        if (cache.sections.length && !applied) {
+        if (!applyImageIndexCache(tab, liveSections, cache)) {
           setImageIndexStatus('error')
           return
         }
-        if (applied) {
-          setImageScanRevision((revision) => revision + 1)
-        }
+        appliedImageIndexes.set(liveSections, { revision, sourceRevision })
         setImageIndexStatus('ready')
       })
       .catch((error: unknown) => {
@@ -302,11 +307,12 @@ const ImagePane: React.FC<ImagePaneProps> = ({ mode, onModeChange }) => {
     return () => {
       cancelled = true
     }
-  }, [canLoadImages, imageIndexRetryCount, liveSections, tab, tab?.book.revision])
+  }, [canLoadImages, imageIndexRetryCount, liveSections, tab, revision, sourceRevision, indexReady])
 
-  const allImages = liveSections.flatMap(imageEntries)
+  let totalImageCount = 0
   const sections = liveSections.flatMap((section): ImageSection[] => {
     const entries = imageEntries(section)
+    totalImageCount += entries.length
     const images = mode === 'all' ? entries : entries.filter((image) => !image.hiddenByDefault)
     return images.length ? [{ images, section }] : []
   })
@@ -341,11 +347,7 @@ const ImagePane: React.FC<ImagePaneProps> = ({ mode, onModeChange }) => {
           ))}
         </SegmentedControl>
         <span className="flex h-7 min-w-8 shrink-0 items-center justify-center rounded-full bg-(--flow-sidebar-item-bg) px-1.5 text-sm leading-none font-medium text-(--flow-text-muted) ring-1 ring-(--flow-sidebar-item-border) ring-inset">
-          {imageIndexStatus === 'ready'
-            ? mode === 'all'
-              ? visibleImageCount
-              : `${visibleImageCount}/${allImages.length}`
-            : '—'}
+          {indexReady ? (mode === 'all' ? visibleImageCount : `${visibleImageCount}/${totalImageCount}`) : '—'}
         </span>
       </div>
       <OverlayScroll
@@ -355,9 +357,9 @@ const ImagePane: React.FC<ImagePaneProps> = ({ mode, onModeChange }) => {
         reserveScrollbarWidth
         scrollbar={{ ...scrollbar, scrollRef: outerRef }}
       >
-        {imageIndexStatus === 'loading' ? (
+        {!indexReady && imageIndexStatus !== 'error' ? (
           <div className="px-5 pt-1 pb-4 text-base text-(--flow-text-muted)">{t('image.loading')}</div>
-        ) : imageIndexStatus === 'error' ? (
+        ) : !indexReady ? (
           <div className="inline-flex items-center gap-1 px-5 pt-1 pb-4 text-base text-destructive">
             <span>{t('image.load_error')}</span>
             <IconButton
