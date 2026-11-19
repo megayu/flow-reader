@@ -98,22 +98,22 @@ export function getLibraryTagOptions(
   tags: LibraryTagRecord[],
   pinnedTags: string[] = [],
 ): LibraryTagOption[] {
-  const availableTagIds = new Set<string>(statusFilters.length ? [] : tags.map((tag) => tag.id))
+  const pinnedSet = new Set(uniqueStringValues(pinnedTags))
+  const toOption = (tag: LibraryTagRecord) => ({ id: tag.id, name: tag.name, pinned: pinnedSet.has(tag.id) })
+  if (!statusFilters.length) return orderLibraryTags(tags, pinnedTags).map(toOption)
+
+  const availableTags = new Set<LibraryTagRecord>()
   const tagById = new Map(tags.map((tag) => [tag.id, tag]))
 
-  books.forEach((book) => {
-    if (!matchesLibraryStatusFilter(book, statusFilters)) return
-    ;(book.tagIds ?? []).forEach((tagId) => {
-      if (tagById.has(tagId)) availableTagIds.add(tagId)
-    })
-  })
+  for (const book of books) {
+    if (!matchesLibraryStatusFilter(book, statusFilters)) continue
+    for (const id of book.tagIds ?? []) {
+      const tag = tagById.get(id)
+      if (tag) availableTags.add(tag)
+    }
+  }
 
-  const pinnedSet = new Set(uniqueStringValues(pinnedTags))
-
-  return orderLibraryTags(
-    Array.from(availableTagIds).map((tagId) => tagById.get(tagId)!),
-    pinnedTags,
-  ).map((tag) => ({ id: tag.id, name: tag.name, pinned: pinnedSet.has(tag.id) }))
+  return orderLibraryTags([...availableTags], pinnedTags).map(toOption)
 }
 
 export function pruneLibraryTagFilters(tagFilters: string[], tagOptions: LibraryTagOption[]) {
