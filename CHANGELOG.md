@@ -2,6 +2,15 @@
 
 ## [Unreleased]
 
+## [0.1.7] - 2026-11-21
+
+- Added a setting to adjust annotation highlight opacity, with a live preview.
+- Added Tarn, a dark background theme using Logseq's color palette.
+- Improved EPUB text readability across reader themes by preserving original text colors and adapting black text for dark backgrounds.
+- Improved performance in areas such as EPUB page turns, full-text search, large TXT imports, bookshelf filtering, etc.
+- Several bug fixes.
+- Several minor UI improvements.
+
 ## [0.1.6] - 2026-11-06
 
 - Added subchapter totals to the table of contents, with a per-book toggle.
