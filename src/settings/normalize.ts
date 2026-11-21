@@ -1,3 +1,4 @@
+import { annotationHighlightOpacity } from '../annotation'
 import { normalizeThemeConfiguration } from '../styles/theme'
 import { normalizeUiFontSize } from '../styles/ui'
 import { TRANSLATION_LANGUAGES } from '../translation/languages'
@@ -25,6 +26,7 @@ export function normalizeSettings(value: Partial<Settings>): Settings {
 
   return {
     ...settings,
+    annotationHighlightOpacity: normalizeAnnotationHighlightOpacity(settings.annotationHighlightOpacity),
     theme: normalizeThemeConfiguration(settings.theme),
     libraryDisplay: normalizeLibraryDisplay(settings.libraryDisplay),
     librarySort: normalizeLibrarySort(settings.librarySort),
@@ -41,6 +43,12 @@ export function normalizeSettings(value: Partial<Settings>): Settings {
       fontSize: normalizeUiFontSize(settings.ui?.fontSize),
     },
   }
+}
+
+function normalizeAnnotationHighlightOpacity(value: number | undefined) {
+  const { min, max, step, defaultValue } = annotationHighlightOpacity
+  if (typeof value !== 'number' || !Number.isFinite(value)) return defaultValue
+  return Math.max(min, Math.min(max, Math.round(value / step) * step))
 }
 
 function normalizeTranslationSettings(

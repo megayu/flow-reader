@@ -4,8 +4,8 @@ import { useSnapshot } from 'valtio'
 import {
   annotationFoldColor,
   annotationFoldStyle,
+  annotationHighlightOpacity,
   annotationOverlayColor,
-  annotationOverlayOpacity,
 } from '../annotation'
 import type { BookTab } from '../models/reader'
 
@@ -297,7 +297,7 @@ export const Annotations: React.FC<AnnotationsProps> = ({ active, dark, tab }) =
               ...clickableMarkStyle,
               ...annotationFoldStyle,
               'data-overlap-group': 'flow-annotations',
-              'data-overlap-opacity': annotationOverlayOpacity,
+              'data-overlap-opacity': `var(--flow-annotation-highlight-opacity, ${annotationHighlightOpacity.defaultValue / 100})`,
               'data-note-fold-color': foldColor,
               fill: annotationOverlayColor(annotation.color),
               'fill-opacity': 1,

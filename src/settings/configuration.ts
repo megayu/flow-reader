@@ -1,3 +1,4 @@
+import { annotationHighlightOpacity } from '../annotation'
 import type { AppLocale } from '../locales'
 import type { PageAppearance, TypographyConfiguration } from '../reader/configuration'
 import type { ImportSourceStorage } from '../storage/types'
@@ -20,6 +21,7 @@ export interface Settings extends TypographyConfiguration {
   translation?: TranslationSettingsConfiguration
   theme?: ThemeConfiguration
   ui?: UiConfiguration
+  annotationHighlightOpacity?: number
   enableTextSelectionMenu?: boolean
   directTextImport?: boolean
   hideEndnotes?: boolean
@@ -147,6 +149,7 @@ export const defaultTranslationSettings = createDefaultTranslationSettings()
 export const defaultSettings: Settings = {
   dictionary: defaultDictionarySettings,
   translation: defaultTranslationSettings,
+  annotationHighlightOpacity: annotationHighlightOpacity.defaultValue,
   enableTextSelectionMenu: true,
   directTextImport: false,
   hideEndnotes: false,

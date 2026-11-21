@@ -29,7 +29,7 @@ export const colorMap = Object.fromEntries(
   }),
 ) as Record<AnnotationColor, string>
 
-export const annotationOverlayOpacity = 0.4
+export const annotationHighlightOpacity = { min: 15, max: 50, step: 5, defaultValue: 40 } as const
 
 export const annotationFoldStyle = {
   'data-note-fold-ratio': 0.34,

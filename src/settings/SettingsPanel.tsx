@@ -4,6 +4,7 @@ import type { CSSProperties, ReactNode } from 'react'
 import { useEffect, useRef, useState } from 'react'
 
 import { RenditionSpread } from '@flow/epub-engine/rendition'
+import { annotationHighlightOpacity, annotationOverlayColor } from '@/annotation'
 import { AppTooltip } from '@/components/AppTooltip'
 import { ColorPickerPopover } from '@/components/ColorPickerPopover'
 import { ColorValueButton } from '@/components/ColorValueButton'
@@ -251,6 +252,12 @@ export const SettingsPanel: React.FC = () => {
                   }}
                 />
               </Item>
+              <AnnotationHighlightOpacitySetting
+                value={settings.annotationHighlightOpacity}
+                onChange={(annotationHighlightOpacity) =>
+                  setSettings((prev) => ({ ...prev, annotationHighlightOpacity }))
+                }
+              />
               <Item
                 title={t('settings.text_selection_menu')}
                 description={t('settings.text_selection_menu.description')}
@@ -670,6 +677,56 @@ const AccentColorSetting: React.FC = () => {
           />
         </PopoverContent>
       </Popover>
+    </Item>
+  )
+}
+
+function AnnotationHighlightOpacitySetting({
+  value = annotationHighlightOpacity.defaultValue,
+  onChange,
+}: {
+  value?: number
+  onChange: (value: number) => void
+}) {
+  const t = useTranslation()
+  const highlightOpacityText = `${value}%`
+  const { min, max, step } = annotationHighlightOpacity
+  const progress = (value - min) / (max - min)
+
+  return (
+    <Item
+      title={t('settings.annotation_highlight_opacity')}
+      description={t('settings.annotation_highlight_opacity.description')}
+      controlId="settings-annotation-highlight-opacity"
+    >
+      <div className="flex h-8 w-56 max-w-full items-center gap-2">
+        <span
+          aria-hidden="true"
+          className="relative max-w-20 shrink-0 truncate rounded-sm bg-(--flow-bg-content) px-1 text-sm"
+        >
+          {t('settings.annotation_highlight_opacity.preview')}
+          <span
+            className="pointer-events-none absolute inset-0 rounded-[inherit]"
+            style={{ backgroundColor: annotationOverlayColor('yellow'), opacity: value / 100 }}
+          />
+        </span>
+        <input
+          id="settings-annotation-highlight-opacity"
+          type="range"
+          min={min}
+          max={max}
+          step={step}
+          value={value}
+          aria-label={t('settings.annotation_highlight_opacity')}
+          aria-valuetext={highlightOpacityText}
+          className="annotation-opacity-slider m-0 h-full min-w-0 flex-auto cursor-pointer appearance-none rounded-sm border-0 bg-transparent focus-visible:outline-2 focus-visible:outline-(--flow-focus-ring)"
+          style={{ '--annotation-opacity-progress': progress } as CSSProperties}
+          onChange={(event) => onChange(event.currentTarget.valueAsNumber)}
+        />
+        <span aria-hidden="true" className="w-8 shrink-0 text-right text-sm tabular-nums">
+          {highlightOpacityText}
+        </span>
+      </div>
     </Item>
   )
 }

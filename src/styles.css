@@ -354,6 +354,37 @@ select {
   background-color: var(--flow-bg-content);
 }
 
+.annotation-opacity-slider {
+  --annotation-opacity-track-height: 4px;
+  --annotation-opacity-thumb-size: 14px;
+  --annotation-opacity-fill-end: calc(
+    var(--annotation-opacity-progress) *
+    (100% - var(--annotation-opacity-thumb-size)) +
+    var(--annotation-opacity-thumb-size) /
+    2
+  );
+  --annotation-opacity-track: linear-gradient(
+    to right,
+    var(--flow-accent) var(--annotation-opacity-fill-end),
+    var(--flow-border-strong) var(--annotation-opacity-fill-end)
+  );
+}
+
+.annotation-opacity-slider::-webkit-slider-runnable-track {
+  height: var(--annotation-opacity-track-height);
+  border-radius: 999px;
+  background: var(--annotation-opacity-track);
+}
+
+.annotation-opacity-slider::-webkit-slider-thumb {
+  appearance: none;
+  width: var(--annotation-opacity-thumb-size);
+  height: var(--annotation-opacity-thumb-size);
+  margin-top: calc((var(--annotation-opacity-track-height) - var(--annotation-opacity-thumb-size)) / 2);
+  border-radius: 50%;
+  background: var(--flow-accent);
+}
+
 .flow-bg-sidebar {
   background-color: var(--flow-bg-sidebar);
 }
