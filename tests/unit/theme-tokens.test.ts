@@ -81,10 +81,9 @@ function contrastRatio(a: string, b: string) {
 }
 
 function testFlowThemeTokensCoverPresetsAndContrast() {
-  assert.strictEqual(backgroundPresets.length, 10)
   assert.deepStrictEqual(
     backgroundPresets.map((preset) => preset.id),
-    ['clean', 'neutral', 'paper', 'sepia', 'rose', 'sage', 'mist', 'dusk', 'charcoal', 'black'],
+    ['clean', 'neutral', 'paper', 'sepia', 'rose', 'sage', 'mist', 'dusk', 'tarn', 'charcoal', 'black'],
   )
 
   for (const preset of backgroundPresets) {

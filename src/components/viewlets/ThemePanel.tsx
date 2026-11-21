@@ -23,6 +23,12 @@ import { Popover, PopoverAnchor, PopoverContent, PopoverTrigger } from '../ui/po
 interface ThemePanelProps {
   onClose?: () => void
 }
+
+const swatchClassName =
+  'grid min-h-12 min-w-0 grid-rows-[1fr_auto] items-center gap-0.5 rounded-lg border px-0.5 py-1.5 shadow-sm transition-[color,background-color,border-color,box-shadow] outline-none focus-visible:ring-2 focus-visible:ring-(--flow-focus-ring)'
+const swatchLabelClassName = 'min-w-0 text-center text-base leading-tight font-medium whitespace-nowrap'
+const swatchAccentClassName = 'mr-1 h-1.5 w-8 justify-self-end rounded-full'
+
 export const ThemePanel: React.FC<ThemePanelProps> = ({ onClose }) => {
   const [{ theme }, setSettings] = useSettings()
   const { accentColor, setAccentColor } = useAccentColor()
@@ -157,7 +163,8 @@ export const ThemePanel: React.FC<ThemePanelProps> = ({ onClose }) => {
                 type="button"
                 aria-pressed={selectedBackground === 'custom'}
                 className={clsx(
-                  'group relative h-12 overflow-hidden rounded-lg border border-dashed text-left shadow-sm transition-[color,background-color,border-color,box-shadow] outline-none focus-visible:ring-2 focus-visible:ring-(--flow-focus-ring)',
+                  swatchClassName,
+                  'border-dashed',
                   selectedBackground === 'custom'
                     ? 'border-(--flow-accent) ring-2 ring-(--flow-accent-border)'
                     : 'border-(--flow-border-strong) hover:border-(--flow-accent-border)',
@@ -165,17 +172,14 @@ export const ThemePanel: React.FC<ThemePanelProps> = ({ onClose }) => {
                 style={{ backgroundColor: customBackground }}
               >
                 <span
-                  className="absolute inset-x-1.5 top-1/2 -translate-y-1/2 truncate text-center text-base font-medium"
+                  className={swatchLabelClassName}
                   style={{
                     color: isDarkPaletteColor(customBackground) ? '#F8FAFC' : '#1F2937',
                   }}
                 >
                   {t('theme.preset.custom')}
                 </span>
-                <span
-                  className="absolute right-1.5 bottom-1.5 h-1.5 w-8 rounded-full"
-                  style={{ backgroundColor: accentColor }}
-                />
+                <span className={swatchAccentClassName} style={{ backgroundColor: accentColor }} />
               </button>
             </PopoverTrigger>
           </div>
@@ -268,7 +272,7 @@ const BackgroundSwatch: React.FC<BackgroundSwatchProps> = ({ preset, label, sele
       aria-pressed={selected}
       aria-label={label}
       className={clsx(
-        'group relative h-12 overflow-hidden rounded-lg border text-left shadow-sm transition-[color,background-color,border-color,box-shadow] outline-none focus-visible:ring-2 focus-visible:ring-(--flow-focus-ring)',
+        swatchClassName,
         selected
           ? 'border-(--flow-accent) ring-2 ring-(--flow-accent-border)'
           : 'border-(--flow-border) hover:border-(--flow-accent-border)',
@@ -277,16 +281,10 @@ const BackgroundSwatch: React.FC<BackgroundSwatchProps> = ({ preset, label, sele
       style={{ backgroundColor: seed }}
       {...props}
     >
-      <span
-        className="absolute inset-x-1.5 top-1/2 -translate-y-1/2 truncate text-center text-base font-medium"
-        style={{ color: labelColor }}
-      >
+      <span className={swatchLabelClassName} style={{ color: labelColor }}>
         {label}
       </span>
-      <span
-        className="absolute right-1.5 bottom-1.5 h-1.5 w-8 rounded-full"
-        style={{ backgroundColor: preset.defaultAccent }}
-      />
+      <span className={swatchAccentClassName} style={{ backgroundColor: preset.defaultAccent }} />
     </button>
   )
 }

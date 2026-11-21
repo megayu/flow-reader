@@ -14,6 +14,7 @@ export type BackgroundPresetId =
   | 'sage'
   | 'mist'
   | 'dusk'
+  | 'tarn'
   | 'rose'
   | 'charcoal'
   | 'black'
@@ -90,7 +91,7 @@ type FlowThemeTokenName =
 export type FlowThemeTokens = Record<FlowThemeTokenName, string>
 
 export const customBackgroundValue = 0
-export const defaultCustomBackgroundColor = '#E1EED8'
+export const defaultCustomBackgroundColor = '#363B40'
 export const darkBackgroundColor = '#24292E'
 export const defaultAccentColor = '#0EA5E9'
 
@@ -157,6 +158,14 @@ export const backgroundPresets: BackgroundPreset[] = [
     lightSeed: '#E5E8F0',
     darkSeed: '#20263A',
     defaultAccent: '#7DD3FC',
+    mode: 'dark',
+  },
+  {
+    id: 'tarn',
+    label: 'Tarn',
+    lightSeed: '#FFFFFF',
+    darkSeed: '#002B36',
+    defaultAccent: '#8EC2C2',
     mode: 'dark',
   },
   {
