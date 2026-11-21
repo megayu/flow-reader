@@ -12,6 +12,7 @@ import { getBookDisplayTitle } from '@/book'
 import { IS_SERVER } from '@/env'
 import { openSupportedExternalUrl } from '@/externalLink'
 import { normalizeHrefPath, safeDecodeHref, sameHref } from '@/noteLinks'
+import { prepareEpubTextColors } from '@/reader/epubTextColor'
 import { emitReaderOpenError, type ReaderOpenErrorStage } from '@/reader/errorEvents'
 import { isRecentReadingEnabled, useAppStore } from '@/state'
 import {
@@ -2207,6 +2208,9 @@ export class BookTab {
     }
     this.setBeforeLayout()
     this.rendition.themes.setDefaultRules(defaultStyle)
+    this.rendition.hooks.content.register((contents, rendition) => {
+      prepareEpubTextColors(contents, rendition.session.layout?.name !== 'pre-paginated')
+    })
     this.rendition.hooks.render.register(() => {
       this.syncFrames()
     })

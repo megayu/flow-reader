@@ -42,6 +42,7 @@ import { useTranslation } from '../hooks/useTranslation'
 import { useTypography } from '../hooks/useTypography'
 import { isEditableKeyboardTarget } from '../keyboard'
 import { type BookTab, completeTabOpen, getBookTabFrameWindows, reader, useReaderSnapshot } from '../models/reader'
+import { applyEpubTextPalette } from '../reader/epubTextColor'
 import { revealRestoredBook } from '../reader/reload'
 import { createReaderKeyDownHandler, hasKeyboardCapturingLayer } from '../reader/shortcuts'
 import { getShortcutChords } from '../shortcuts'
@@ -757,8 +758,11 @@ const BookPane: React.FC<BookPaneProps> = React.memo(function BookPane({ active,
   })
 
   useEffect(() => {
-    // set `!important` when in dark mode
-    rendition?.themes.overrideProperty('color', dark ? '#bfc8ca' : '#3f484a', dark)
+    if (!rendition) return
+    const applyPalette = (contents: Contents) => applyEpubTextPalette(contents, dark)
+    rendition.hooks.content.register(applyPalette)
+    rendition.getContents().forEach(applyPalette)
+    return () => rendition.hooks.content.deregister(applyPalette)
   }, [rendition, dark])
 
   useBookPaneWheelNavigation({
